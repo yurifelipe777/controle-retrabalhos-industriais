@@ -20,9 +20,24 @@ import Layout from './components/Layout'
 import LoadingScreen from './components/LoadingScreen'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { session, profile, isLoading } = useAuth()
+  const { session, profile, isLoading, signOut } = useAuth()
   if (isLoading) return <LoadingScreen />
   if (!session) return <Navigate to="/login" replace />
+  if (!profile) return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="text-center p-8">
+        <h1 className="text-2xl font-bold text-red-400 mb-2">Perfil indisponível</h1>
+        <p className="text-muted-foreground mb-4">Não foi possível carregar seu perfil. Tente entrar novamente.</p>
+        <button
+          type="button"
+          onClick={() => void signOut()}
+          className="px-4 py-2 rounded-lg bg-primary text-primary-foreground font-semibold"
+        >
+          Sair
+        </button>
+      </div>
+    </div>
+  )
   if (profile?.status === 'pending') return <Navigate to="/pending-approval" replace />
   if (profile?.status === 'rejected') return (
     <div className="min-h-screen flex items-center justify-center bg-background">
