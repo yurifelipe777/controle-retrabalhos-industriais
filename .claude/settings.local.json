@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(New-Item -ItemType Directory -Force \"c:\\\\Users\\\\ynascimento\\\\Desktop\\\\06 - LEADERSHIP\\\\Cursos e Treinamentos\\\\Antigravity\\\\Projetos Antigravity\\\\Retrabalho\\\\supabase\\\\migrations\")",
+      "PowerShell(Get-ChildItem \"$env:LOCALAPPDATA\" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'node|npm|nvm' } | Select-Object Name, FullName)",
+      "PowerShell(winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements 2>&1)"
+    ]
+  }
+}
