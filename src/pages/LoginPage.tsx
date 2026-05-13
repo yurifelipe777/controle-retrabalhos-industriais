@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -27,7 +27,6 @@ function CaloiLogo({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
 }
 
 export default function LoginPage() {
-  const navigate = useNavigate()
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
 
@@ -50,8 +49,6 @@ export default function LoginPage() {
             ? 'E-mail ou senha incorretos.'
             : error.message,
         })
-      } else {
-        navigate('/dashboard')
       }
     } finally {
       setLoading(false)

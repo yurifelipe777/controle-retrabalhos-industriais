@@ -52,7 +52,14 @@ export default function SignupPage() {
         },
       })
       if (error) {
-        toast({ variant: 'destructive', title: 'Erro no cadastro', description: error.message })
+        const alreadyRegistered = error.message === 'User already registered'
+        toast({
+          variant: alreadyRegistered ? 'default' : 'destructive',
+          title: alreadyRegistered ? 'Conta já cadastrada' : 'Erro no cadastro',
+          description: alreadyRegistered
+            ? 'Este e-mail já possui acesso solicitado. Use a tela de login.'
+            : error.message,
+        })
       } else {
         setDone(true)
       }

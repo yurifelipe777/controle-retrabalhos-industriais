@@ -81,16 +81,18 @@ async function loadProfile(userId: string, email: string) {
 }
 
 function handleSession(session: Session | null) {
-  const { setSession, clear } = useAuthStore.getState()
-
-  setSession(session)
+  const { setSession, setLoading, clear } = useAuthStore.getState()
 
   if (session?.user) {
+    setLoading(true)
+    setSession(session)
     window.setTimeout(() => {
       void loadProfile(session.user.id, session.user.email ?? '')
     }, 0)
     return
   }
+
+  setSession(session)
 
   loadedUserId = null
   activeLoadUserId = null
