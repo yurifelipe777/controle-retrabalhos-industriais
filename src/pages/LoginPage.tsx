@@ -88,12 +88,12 @@ export default function LoginPage() {
         <div className="relative z-10 space-y-6 animate-fade-in-up delay-100">
           <div>
             <h2 className="text-4xl font-black text-white leading-tight tracking-tight">
-              Controle de<br />
+              Gestão de<br />
               <span style={{ color: '#E8291C' }}>Retrabalhos</span><br />
-              Industriais
+              em Tempo Real
             </h2>
             <p className="mt-4 text-base text-white/50 max-w-sm leading-relaxed">
-              Rastreabilidade total. Gestão de qualidade em tempo real. Indicadores precisos para decisões rápidas.
+              Rastreie lotes, controle movimentações e monitore indicadores de retrabalho com precisão industrial.
             </p>
           </div>
 
@@ -101,7 +101,7 @@ export default function LoginPage() {
           <div className="flex gap-8">
             {[
               { value: 'Lotes', label: 'rastreados' },
-              { value: 'Qualidade', label: 'integrada' },
+              { value: 'Movimentações', label: 'registradas' },
               { value: 'Real-time', label: 'dashboard' },
             ].map(s => (
               <div key={s.label}>
