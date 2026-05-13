@@ -444,3 +444,140 @@ VITE_FIRST_ADMIN_EMAIL=ynascimento@caloi.com
 | Data | Autor | Alteração |
 |---|---|---|
 | 2026-05-12 | Claude Code (Piloto) | Constituição inicial criada — Fase 0 VLAEG |
+| 2026-05-12 | Claude Code (Piloto) | Infrastructure, deploy, auth fixes, UI redesign — ver seção 19 |
+
+---
+
+## 19. Histórico Operacional de Deploy e Correções
+
+### 19.1 Problema: Blank page no deploy (Coolify — build pack "static")
+
+**Causa raiz:** Coolify build pack `static` copia os arquivos brutos do repositório para o nginx, mas `dist/` está no `.gitignore`. O nginx servia o `index.html` de desenvolvimento sem os bundles JS — resultado: tela em branco.
+
+**Solução aplicada:**
+- Criado `Dockerfile` multi-stage (node:20-alpine para build → nginx:alpine para servir)
+- `ARG VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY / VITE_FIRST_ADMIN_EMAIL` passados como build args do Coolify
+- Criado `nginx.conf` minimalista com `try_files $uri $uri/ /index.html` para suportar React Router no client-side
+- Build pack do Coolify alterado de `static` para `dockerfile`
+- Campos `publish_directory`, `install_command`, `build_command` limpos via Coolify REST API PATCH (sobraram do modo static)
+
+**Incidente adicional — container em restart loop (12x):**
+- `nginx.conf` inicial tinha diretivas `gzip_types` que conflitavam com o middleware Traefik de gzip do Coolify (dupla compressão)
+- Solução: removidas todas as diretivas gzip do nginx.conf; Traefik gerencia compression
+
+---
+
+### 19.2 Problema: Login com "E-mail ou senha incorretos"
+
+**Causa raiz:** Supabase tinha confirmação de e-mail habilitada por padrão (`mailer_autoconfirm: false`). Usuário criava conta mas ficava "unconfirmed" e não conseguia logar.
+
+**Solução aplicada:**
+- Desabilitada confirmação de e-mail via Supabase Management API: `mailer_autoconfirm: true`
+- Usuário agora pode cadastrar e logar imediatamente sem confirmar e-mail
+
+---
+
+### 19.3 Problema: Loading infinito após login
+
+**Causa raiz (múltipla):**
+
+1. **`useAuth()` chamado em 5 lugares** (App, ProtectedRoute, AdminRoute, QualityRoute, AuthRoute) — cada instância criava um `useEffect` com `getSession()` + `onAuthStateChange`, gerando múltiplas chamadas concorrentes a `loadProfile()`.
+
+2. **Supabase v2 comportamento:** `onAuthStateChange` já dispara `INITIAL_SESSION` imediatamente. Chamar `getSession()` adicionalmente causava double-call com race condition.
+
+3. **Guard incompleto na primeira correção:** guard `isLoadingProfile` resetava para `null` ao término da primeira carga, permitindo que chamadas subsequentes (de outras instâncias do hook) voltassem a setar `isLoading: true` e ficassem presas.
+
+4. **Banco de dados:** o profile de `ynascimento@caloi.com` estava com `status: pending`, triggando `promote_first_admin` RPC — mas com múltiplas chamadas concorrentes, o RPC criava row locks no PostgreSQL, causando timeout.
+
+**Soluções aplicadas:**
+
+a) **SQL direto** para desbloquear o usuário admin:
+```sql
+UPDATE profiles SET role='admin', status='approved' WHERE email='ynascimento@caloi.com';
+```
+
+b) **`useAuth.ts` completamente reescrito** — pattern correto para Supabase v2:
+- Removido `getSession()` — usa somente `onAuthStateChange` (dispara `INITIAL_SESSION` na inicialização)
+- Dois guards em nível de módulo (compartilhados entre todas as instâncias do hook):
+  - `activeLoadUserId` — ID sendo carregado agora (evita concorrência)
+  - `loadedUserId` — ID já carregado com sucesso (nunca resetado exceto no signOut)
+- Timeout de 5s no RPC `promote_first_admin` via `Promise.race`
+
+---
+
+### 19.4 UI Redesign — Identidade Visual Caloi
+
+**Referências:** `inspiration/CALOI.png`, `inspiration/Telas retrabalho.png`
+
+**Paleta de cores:**
+- Vermelho Caloi: `#E8291C` (HSL 4, 82%, 51%)
+- Fundo escuro: `hsl(224, 43%, 5%)` — quase preto com leve tom azul
+- Cards: `hsl(225, 40%, 8%)` — escuro com bordas `rgba(255,255,255,0.06)`
+
+**Arquivos alterados:**
+
+| Arquivo | Alteração |
+|---|---|
+| `src/index.css` | Tema Caloi Red, animações (fade-in-up, fade-in, pulse-red), classes utilitárias (glass-card, caloi-glow, nav-active, stat-card-hover) |
+| `src/pages/LoginPage.tsx` | Split-screen: painel esquerdo escuro com gradiente vermelho + CALOI logo; painel direito com formulário glassmorphism. Foco em "Controle de Retrabalhos" (sem menção a qualidade) |
+| `src/pages/SignupPage.tsx` | Estilo dark matching, CALOI logo, glassmorphism card |
+| `src/components/Sidebar.tsx` | Ícone "C" SVG vermelho, nav active com borda esquerda vermelha + gradiente |
+| `src/components/Header.tsx` | Avatar com iniciais em gradiente vermelho, badge de role colorido |
+| `src/components/LoadingScreen.tsx` | Ícone quadrado "C" vermelho, dots animados |
+| `src/components/ui/card.tsx` | `rounded-xl`, dark, borda semi-transparente |
+| `src/components/ui/input.tsx` | `bg-white/5 border-white/10`, focus ring vermelho |
+| `src/components/ui/button.tsx` | `bg-[#E8291C]`, gradiente, glow shadow |
+| `src/components/Layout.tsx` | `background: hsl(224,43%,5%)`, `animate-fade-in` no main |
+| `src/pages/DashboardPage.tsx` | StatCards com icon boxes coloridos por variante, gráficos com fill `#E8291C` |
+| `index.html` | Google Fonts Inter adicionado |
+
+---
+
+### 19.5 Correção: Cache de browser servindo JS stale
+
+**Problema:** Após novo deploy, browser podia servir `index.html` em cache apontando para bundles JS antigos (404), causando tela em branco para usuários com cache.
+
+**Solução — `nginx.conf`:**
+```nginx
+location = /index.html {
+    add_header Cache-Control "no-cache, no-store, must-revalidate";
+    add_header Pragma "no-cache";
+    add_header Expires 0;
+}
+location /assets/ {
+    add_header Cache-Control "public, max-age=31536000, immutable";
+}
+```
+`index.html` sempre fresco do servidor. Assets com hash no nome (Vite) cacheados por 1 ano.
+
+---
+
+### 19.6 Estado atual do banco (2026-05-12)
+
+- Supabase projeto: `vgyntfdusnujmrhyskaq`
+- Usuário admin ativo: `ynascimento@caloi.com` — `role: admin`, `status: approved`
+- Email confirmation: **desabilitada** (`mailer_autoconfirm: true`)
+- RLS: ativo em todas as tabelas
+- Função `promote_first_admin`: SECURITY DEFINER, promove primeiro usuário com `VITE_FIRST_ADMIN_EMAIL` de `pending` → `admin/approved`
+
+---
+
+### 19.7 Estado atual do deploy (2026-05-12)
+
+- Repositório: `https://github.com/yurifelipe777/controle-retrabalhos-industriais`
+- Branch: `main`
+- Coolify: build pack `dockerfile`, Hostinger
+- URL: `https://retrabalhofabrica.yurifelipen8n.cloud`
+- Último commit deployado: `2c1b297` (fix: resolve infinite loading + update login page branding)
+
+---
+
+### 19.8 Variáveis de ambiente configuradas no Coolify (Build Args)
+
+```
+VITE_SUPABASE_URL=https://vgyntfdusnujmrhyskaq.supabase.co
+VITE_SUPABASE_ANON_KEY=<anon_key configurada no Coolify>
+VITE_FIRST_ADMIN_EMAIL=ynascimento@caloi.com
+```
+
+> `SUPABASE_SERVICE_ROLE_KEY` — NUNCA configurado no Coolify. Apenas em scripts locais de migração.
