@@ -403,6 +403,30 @@ export interface Database {
         Args: { target_user_id: string }
         Returns: undefined
       }
+      ensure_current_user_profile: {
+        Args: Record<PropertyKey, never>
+        Returns: Database['public']['Tables']['profiles']['Row']
+      }
+      current_user_role: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      current_user_status: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      is_approved_user: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      is_admin_user: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      is_quality_user: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never

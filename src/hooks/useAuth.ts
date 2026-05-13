@@ -29,18 +29,29 @@ async function loadProfile(userId: string, email: string) {
   setLoading(true)
 
   try {
-    const { data, error } = await withTimeout(
+    let { data, error } = await withTimeout(
       supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single(),
+        .maybeSingle(),
       'Profile load',
+      15000,
     )
 
     if (error || !data) {
-      setProfile(null)
-      return
+      const recovered = await withTimeout(
+        supabase.rpc('ensure_current_user_profile'),
+        'Profile recovery',
+        15000,
+      )
+
+      if (recovered.error || !recovered.data) {
+        setProfile(null)
+        return
+      }
+
+      data = recovered.data as Profile
     }
 
     const prof = data as Profile
