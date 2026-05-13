@@ -23,24 +23,24 @@ function StatCard({
   variant?: 'default' | 'warning' | 'danger' | 'success'
   subtitle?: string
 }) {
-  const variantClasses = {
-    default: 'text-foreground',
-    warning: 'text-yellow-400',
-    danger: 'text-red-400',
-    success: 'text-emerald-400',
-  }
+  const cfg = {
+    default: { color: '#E8291C', bg: 'rgba(232,41,28,0.1)', border: 'rgba(232,41,28,0.15)' },
+    warning: { color: '#F59E0B', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.15)' },
+    danger:  { color: '#EF4444', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.15)' },
+    success: { color: '#22C55E', bg: 'rgba(34,197,94,0.1)', border: 'rgba(34,197,94,0.15)' },
+  }[variant]
 
   return (
-    <Card>
+    <Card className="stat-card-hover cursor-default">
       <CardContent className="p-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground mb-1">{title}</p>
-            <p className={`text-2xl font-bold ${variantClasses[variant]}`}>{value}</p>
-            {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-white/40 mb-1.5 font-medium truncate">{title}</p>
+            <p className="text-2xl font-black leading-none" style={{ color: cfg.color }}>{value}</p>
+            {subtitle && <p className="text-xs text-white/30 mt-1.5">{subtitle}</p>}
           </div>
-          <div className={`p-2 rounded-lg bg-current/10 ${variantClasses[variant]}`}>
-            <Icon className="h-5 w-5" />
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: cfg.bg, border: `1px solid ${cfg.border}` }}>
+            <Icon className="h-5 w-5" style={{ color: cfg.color }} />
           </div>
         </div>
       </CardContent>
@@ -190,14 +190,15 @@ export default function DashboardPage() {
             ) : (
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={topPNs} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                  <XAxis type="number" tick={{ fill: '#94a3b8', fontSize: 11 }} />
-                  <YAxis dataKey="label" type="category" tick={{ fill: '#94a3b8', fontSize: 10 }} width={80} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                  <XAxis type="number" tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 11 }} />
+                  <YAxis dataKey="label" type="category" tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 10 }} width={80} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '6px' }}
-                    labelStyle={{ color: '#e2e8f0' }}
+                    contentStyle={{ backgroundColor: 'hsl(225, 40%, 10%)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px' }}
+                    labelStyle={{ color: 'rgba(255,255,255,0.8)' }}
+                    itemStyle={{ color: '#E8291C' }}
                   />
-                  <Bar dataKey="qty" name="Qtd Aberta" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="qty" name="Qtd Aberta" fill="#E8291C" radius={[0, 4, 4, 0]} opacity={0.85} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -227,7 +228,7 @@ export default function DashboardPage() {
                   ))}
                 </Pie>
                 <Tooltip
-                  contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '6px' }}
+                  contentStyle={{ backgroundColor: 'hsl(225, 40%, 10%)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px' }}
                 />
               </PieChart>
             </ResponsiveContainer>

@@ -1,6 +1,5 @@
-import { Menu, Bell, LogOut, User } from 'lucide-react'
+import { Menu, Bell, LogOut, User, ChevronDown } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
-import { Button } from './ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,56 +13,98 @@ interface HeaderProps {
   onMenuToggle: () => void
 }
 
-const roleBadge: Record<string, string> = {
-  admin: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  quality: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  user: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
-}
-
-const roleLabel: Record<string, string> = {
-  admin: 'Admin',
-  quality: 'Qualidade',
-  user: 'Usuário',
+const roleBadge: Record<string, { bg: string; text: string; label: string }> = {
+  admin:   { bg: 'rgba(168,85,247,0.15)', text: '#A855F7', label: 'Admin' },
+  quality: { bg: 'rgba(59,130,246,0.15)', text: '#60A5FA', label: 'Qualidade' },
+  user:    { bg: 'rgba(148,163,184,0.10)', text: '#94A3B8', label: 'Usuário' },
 }
 
 export default function Header({ onMenuToggle }: HeaderProps) {
   const { profile, signOut } = useAuth()
+  const role = roleBadge[profile?.role ?? 'user'] ?? roleBadge.user
+  const initials = profile?.full_name
+    ? profile.full_name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()
+    : 'U'
 
   return (
-    <header className="h-14 border-b border-border bg-card flex items-center px-4 gap-4 shrink-0">
-      <Button variant="ghost" size="icon" onClick={onMenuToggle} className="shrink-0">
+    <header
+      className="h-14 flex items-center px-4 gap-3 shrink-0"
+      style={{
+        background: 'hsl(225, 42%, 6%)',
+        borderBottom: '1px solid rgba(255,255,255,0.05)',
+      }}
+    >
+      <button
+        onClick={onMenuToggle}
+        className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+        style={{ color: 'rgba(255,255,255,0.4)' }}
+        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.05)'; (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.8)' }}
+        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.4)' }}
+      >
         <Menu className="h-4 w-4" />
-      </Button>
+      </button>
 
       <div className="flex-1" />
 
-      <Button variant="ghost" size="icon" className="relative">
+      {/* Notification bell */}
+      <button
+        className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors relative"
+        style={{ color: 'rgba(255,255,255,0.35)' }}
+        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.05)'; (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.7)' }}
+        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.35)' }}
+      >
         <Bell className="h-4 w-4" />
-      </Button>
+      </button>
 
+      {/* User menu */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="flex items-center gap-2 h-9 px-2">
-            <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center">
-              <User className="h-4 w-4 text-primary" />
+          <button
+            className="flex items-center gap-2.5 h-9 px-2.5 rounded-lg transition-colors"
+            style={{ color: 'rgba(255,255,255,0.7)' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.05)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
+          >
+            {/* Avatar */}
+            <div
+              className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
+              style={{ background: 'linear-gradient(135deg, #E8291C 0%, #C41E13 100%)' }}
+            >
+              {initials}
             </div>
             <div className="hidden sm:flex flex-col items-start">
-              <span className="text-sm font-medium leading-none">{profile?.full_name ?? 'Usuário'}</span>
-              <span className={`text-xs mt-0.5 px-1.5 py-0.5 rounded border ${roleBadge[profile?.role ?? 'user'] ?? roleBadge.user}`}>
-                {roleLabel[profile?.role ?? 'user'] ?? 'Usuário'}
+              <span className="text-xs font-semibold text-white/80 leading-none">{profile?.full_name ?? 'Usuário'}</span>
+              <span
+                className="text-[10px] mt-0.5 px-1.5 py-0.5 rounded font-medium"
+                style={{ background: role.bg, color: role.text }}
+              >
+                {role.label}
               </span>
             </div>
-          </Button>
+            <ChevronDown className="h-3 w-3 text-white/30 hidden sm:block" />
+          </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48">
-          <DropdownMenuLabel className="font-normal">
-            <div className="flex flex-col space-y-1">
-              <p className="text-sm font-medium">{profile?.full_name}</p>
-              <p className="text-xs text-muted-foreground">{profile?.email}</p>
+
+        <DropdownMenuContent align="end" className="w-52" style={{ background: 'hsl(225, 40%, 9%)', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <DropdownMenuLabel className="font-normal px-3 py-2.5">
+            <div className="flex items-center gap-2.5">
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
+                style={{ background: 'linear-gradient(135deg, #E8291C 0%, #C41E13 100%)' }}
+              >
+                {initials}
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-white/90">{profile?.full_name}</p>
+                <p className="text-xs text-white/40 truncate max-w-[140px]">{profile?.email}</p>
+              </div>
             </div>
           </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={signOut} className="text-red-400 focus:text-red-400">
+          <DropdownMenuSeparator style={{ background: 'rgba(255,255,255,0.05)' }} />
+          <DropdownMenuItem
+            onClick={signOut}
+            className="text-red-400 focus:text-red-300 focus:bg-red-500/10 cursor-pointer mx-1 rounded-md"
+          >
             <LogOut className="mr-2 h-4 w-4" />
             Sair
           </DropdownMenuItem>
