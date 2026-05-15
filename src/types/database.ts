@@ -440,6 +440,27 @@ export interface Database {
         }
         Returns: string
       }
+      admin_update_rework_lot: {
+        Args: {
+          p_lot_id: string
+          p_part_number_id: string
+          p_quantity_initial: number
+          p_quantity_open: number
+          p_origin_area: string
+          p_current_status: string
+          p_quality_status: string
+          p_defect_type_id: string | null
+          p_defect_description: string
+          p_quality_block_required: boolean
+          p_quality_block_number?: string | null
+          p_opened_at?: string | null
+        }
+        Returns: undefined
+      }
+      admin_delete_rework_lot: {
+        Args: { p_lot_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
