@@ -4,7 +4,6 @@ import { useAuth } from '../hooks/useAuth'
 import {
   LayoutDashboard,
   Package,
-  Plus,
   ShieldCheck,
   Trash2,
   BookOpen,
@@ -31,7 +30,6 @@ interface NavItem {
 const navItems: NavItem[] = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/lotes', label: 'Lotes', icon: Package },
-  { to: '/lotes/novo', label: 'Novo Lote', icon: Plus },
   { to: '/qualidade', label: 'Qualidade', icon: ShieldCheck, qualityOnly: true },
   { to: '/sucata', label: 'Sucata', icon: Trash2, qualityOnly: true },
   { to: '/materiais', label: 'Materiais', icon: BookOpen },

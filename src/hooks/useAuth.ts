@@ -95,11 +95,16 @@ function handleSession(session: Session | null) {
   const { setSession, setLoading, clear } = useAuthStore.getState()
 
   if (session?.user) {
-    setLoading(true)
     setSession(session)
-    window.setTimeout(() => {
-      void loadProfile(session.user.id, session.user.email ?? '')
-    }, 0)
+    // Only trigger loading when the profile for this user hasn't been loaded yet.
+    // TOKEN_REFRESHED / USER_UPDATED fire on tab focus and must not reset isLoading
+    // when the profile is already in the store — that would cause infinite loading.
+    if (loadedUserId !== session.user.id) {
+      setLoading(true)
+      window.setTimeout(() => {
+        void loadProfile(session.user.id, session.user.email ?? '')
+      }, 0)
+    }
     return
   }
 
