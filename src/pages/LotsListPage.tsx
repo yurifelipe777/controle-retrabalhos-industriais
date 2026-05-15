@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { calcAgingDays, formatDate, formatQuantity } from '../lib/utils'
+import { exportCompleteReport } from '../lib/exportExcel'
 import { Card, CardContent } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
@@ -12,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { useAuth } from '../hooks/useAuth'
 import { toast } from '../components/ui/use-toast'
-import { Plus, Search, Eye, AlertTriangle, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Search, Eye, AlertTriangle, Pencil, Trash2, Download } from 'lucide-react'
 import type { LotStatus, QualityStatus, ReworkLot } from '../types'
 
 const LOT_STATUS_LABELS: Record<LotStatus, string> = {
@@ -374,6 +375,20 @@ export default function LotsListPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('active')
   const [editingLot, setEditingLot] = useState<ReworkLot | null>(null)
+  const [exporting, setExporting] = useState(false)
+
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      await exportCompleteReport()
+      toast({ title: 'Relatório exportado com sucesso!' })
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao gerar relatório'
+      toast({ variant: 'destructive', title: 'Erro na exportação', description: msg })
+    } finally {
+      setExporting(false)
+    }
+  }
 
   const { data: lots = [], isLoading } = useQuery({
     queryKey: ['lots-list', statusFilter],
@@ -425,19 +440,39 @@ export default function LotsListPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Lotes de Retrabalho</h1>
           <p className="text-muted-foreground text-sm">
             {filtered.length} lote{filtered.length !== 1 ? 's' : ''} encontrado{filtered.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <Link to="/lotes/novo">
-          <Button className="gap-2">
-            <Plus className="h-4 w-4" />
-            Novo Lote
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExport}
+            disabled={exporting}
+            className="gap-2 border-[#217346]/40 text-[#217346] hover:bg-[#217346]/10 hover:border-[#217346]/60"
+            title="Exportar relatório completo em Excel"
+          >
+            {exporting ? (
+              <span className="w-4 h-4 border-2 border-[#217346] border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <ExcelIcon className="h-4 w-4" />
+            )}
+            <span className="hidden sm:inline">
+              {exporting ? 'Gerando...' : 'Exportar Excel'}
+            </span>
+            {!exporting && <Download className="h-3 w-3 opacity-60" />}
           </Button>
-        </Link>
+          <Link to="/lotes/novo">
+            <Button className="gap-2">
+              <Plus className="h-4 w-4" />
+              Novo Lote
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Filtros */}
@@ -588,6 +623,24 @@ export default function LotsListPage() {
         />
       )}
     </div>
+  )
+}
+
+// Ícone Microsoft Excel (estilo oficial)
+function ExcelIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="24" height="24" rx="3" fill="#217346" />
+      {/* X da esquerda */}
+      <path
+        d="M5.5 7.5L8.2 12L5.5 16.5H7.8L9.5 13.2L11.2 16.5H13.5L10.8 12L13.5 7.5H11.2L9.5 10.8L7.8 7.5H5.5Z"
+        fill="white"
+      />
+      {/* Linhas de grade à direita */}
+      <rect x="15" y="8" width="4" height="1.2" rx="0.4" fill="rgba(255,255,255,0.75)" />
+      <rect x="15" y="11.4" width="4" height="1.2" rx="0.4" fill="rgba(255,255,255,0.75)" />
+      <rect x="15" y="14.8" width="4" height="1.2" rx="0.4" fill="rgba(255,255,255,0.75)" />
+    </svg>
   )
 }
 

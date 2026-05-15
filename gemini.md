@@ -445,6 +445,7 @@ VITE_FIRST_ADMIN_EMAIL=ynascimento@caloi.com
 |---|---|---|
 | 2026-05-12 | Claude Code (Piloto) | Constituição inicial criada — Fase 0 VLAEG |
 | 2026-05-12 | Claude Code (Piloto) | Infrastructure, deploy, auth fixes, UI redesign — ver seção 19 |
+| 2026-05-15 | Claude Code (Sonnet 4.6) | Recuperação do projeto após reformat + correções — ver seções 19.9–19.15 |
 
 ---
 
@@ -581,3 +582,210 @@ VITE_FIRST_ADMIN_EMAIL=ynascimento@caloi.com
 ```
 
 > `SUPABASE_SERVICE_ROLE_KEY` — NUNCA configurado no Coolify. Apenas em scripts locais de migração.
+
+---
+
+## 20. Histórico da Sessão de 2026-05-15 (Recuperação + Novas Funcionalidades)
+
+> Máquina reformatada. Projeto recuperado do GitHub: `https://github.com/yurifelipe777/controle-retrabalhos-industriais`
+
+---
+
+### 20.1 Correção: Loading infinito em trocas de aba / eventos TOKEN_REFRESHED
+
+**Causa raiz:** `handleSession()` em `useAuth.ts` chamava `setLoading(true)` incondicionalmente em todo evento `onAuthStateChange`. Supabase v2 dispara `TOKEN_REFRESHED` e `USER_UPDATED` periodicamente e em toda mudança de foco de aba, resetando `isLoading` para `true` após o perfil já estar carregado.
+
+**Solução aplicada — guarda por módulo (`loadedUserId`):**
+```typescript
+// Só ativa loading se o perfil do usuário atual ainda não foi carregado
+if (loadedUserId !== session.user.id) {
+  setLoading(true)
+  void loadProfile(session.user.id, session.user.email ?? '')
+}
+```
+`loadedUserId` persiste entre re-renders (module-level) e só é resetado no sign-out.
+
+**Arquivos:** `src/hooks/useAuth.ts`
+
+---
+
+### 20.2 Correção: Item duplicado "Novo Lote" na Sidebar
+
+**Problema:** O item de navegação `/lotes/novo` aparecia duas vezes no menu lateral.
+
+**Solução:** Removido item duplicado do array `navItems` em `src/components/Sidebar.tsx`. Import `Plus` também removido por ficar sem uso.
+
+---
+
+### 20.3 Funcionalidade: Sistema de Estorno de Movimentações
+
+**Contexto:** Usuários podem lançar erros (etapa errada, quantidade errada). O sistema agora permite reverter movimentações mantendo trilha completa de auditoria.
+
+#### Migration 011 — `supabase/migrations/011_reverse_movement.sql`
+- Adicionadas colunas `is_reversed boolean DEFAULT false` e `reversal_of_movement_id uuid` na tabela `lot_movements`
+- Índice `idx_lot_movements_reversal` para performance
+- Função original `reverse_lot_movement(uuid, text)` com 2 parâmetros (substituída pela 012)
+
+#### Atualização TypeScript
+- `src/types/index.ts` — campos `is_reversed` e `reversal_of_movement_id` adicionados à interface `LotMovement`
+- `src/types/database.ts` — campos adicionados em Row/Insert/Update de `lot_movements`; função RPC declarada na seção `Functions`
+
+#### Interface na LotDetailPage
+- Botão "Estorno" (âmbar) visível na barra de ações quando há movimentos reversíveis
+- Modal de estorno em 2 passos: (1) selecionar movimento, (2) confirmar com motivo
+- Histórico exibe movimentos estornados com badge "estornado" e opacidade reduzida
+- Movimentos de estorno exibidos em âmbar com ícone `RotateCcw`
+
+**Arquivos:** `src/pages/LotDetailPage.tsx`, `src/types/index.ts`, `src/types/database.ts`
+
+---
+
+### 20.4 Funcionalidade: Estorno Parcial + Estorno de Entrada Inicial
+
+**Pedido do usuário:** Permitir estornar a entrada inicial (não apenas transferências) e informar quantidade parcial.
+
+#### Migration 012 — `supabase/migrations/012_reverse_movement_partial.sql`
+- Substitui função anterior (2 params → 3 params: adiciona `p_quantity numeric DEFAULT NULL`)
+- Suporta `movement_type = 'initial'` além de `'transfer'`
+- Estorno de entrada: usa from=to=stage original para satisfazer trigger, depois aplica redução manual em `lot_stage_balances` e `quantity_open`
+- Rastreia quantidade já estornada via `SUM(quantity) WHERE reversal_of_movement_id = p_movement_id`
+- Marca `is_reversed = true` apenas quando toda a quantidade é revertida
+- Audit log completo com delta e flag `partial`
+
+**Estratégia para estorno de entrada (movimento initial com from_stage_id = NULL):**
+```sql
+-- Trigger netearia a zero (reduce+add same stage) — após, corrige manualmente:
+UPDATE lot_stage_balances SET balance_quantity = balance_quantity - v_effective_qty WHERE ...
+UPDATE rework_lots SET quantity_open = quantity_open - v_effective_qty WHERE ...
+```
+
+#### Interface atualizada (LotDetailPage)
+- `useMemo` computa `reversibleMovements` incluindo `initial` + `transfer`
+- Calcula `alreadyReversedQty` e `reversibleQty` por movimento via varredura da lista
+- Campo de quantidade editável no modal (default = máximo disponível, validação de range)
+- Texto de impacto diferente para initial vs transfer
+- `canReverse` atualizado para incluir movimentos `initial`
+
+**Arquivos:** `src/pages/LotDetailPage.tsx`, `src/types/database.ts`, `supabase/migrations/012_reverse_movement_partial.sql`
+
+> **Status das migrations:** 011 e 012 devem ser aplicadas manualmente no Supabase SQL Editor.
+
+---
+
+### 20.5 Funcionalidade: Edição Completa e Exclusão de Lotes (Admin)
+
+#### Migration 013 — `supabase/migrations/013_admin_lot_management.sql`
+
+**`admin_update_rework_lot`** (SECURITY DEFINER):
+- Verifica `is_admin_user()` antes de qualquer operação
+- Permite editar todos os campos: `part_number_id`, `quantity_initial`, `quantity_open`, `origin_area`, `current_status`, `quality_status`, `defect_type_id`, `defect_description`, `quality_block_required`, `quality_block_number`, `opened_at`
+- Captura estado anterior para audit_log antes de atualizar
+
+**`admin_delete_rework_lot`** (SECURITY DEFINER):
+- Verifica `is_admin_user()`
+- Registra no audit_log ANTES de deletar (registro de exclusão sobrevive)
+- Deleta em ordem de dependência: `attachments` → `quality_events` → `scrap_events` → `lot_stage_balances` → `lot_movements` → `rework_lots`
+
+#### Interface (LotsListPage)
+- Botão **Lápis (Editar)** — azul, admin only
+  - Modal com todos os campos editáveis
+  - Busca de part number com filtro por texto em tempo real
+  - Selects para status atual, status qualidade e tipo de defeito
+  - Campo datetime-local para `opened_at`
+  - Validação: qtd_aberta ≤ qtd_inicial, campos obrigatórios
+- Botão **Lixeira (Excluir)** — vermelho, admin only
+  - Confirmação com `window.confirm()` e mensagem clara sobre irreversibilidade
+  - Invalida cache após exclusão
+
+**Arquivos:** `src/pages/LotsListPage.tsx`, `src/types/database.ts`, `supabase/migrations/013_admin_lot_management.sql`
+
+---
+
+### 20.6 Funcionalidade: Dashboard Interativo com Drilldown por Part Number
+
+**Objetivo:** Transformar o dashboard de visualização passiva em ferramenta de análise para tomada de decisão.
+
+#### Gráfico de Barras Interativo
+- Click em barra do "Top Part Numbers" filtra toda a página para aquele PN
+- Barra selecionada permanece vermelha (#E8291C); demais ficam 25% de opacidade
+- Botão "Limpar filtro" (X) no header do card
+- Usando `<Cell>` do recharts para cor dinâmica por entrada
+
+#### Lista Geral de Itens em Retrabalho
+- Tabela completa de todos os lotes ativos: código, PN, descrição, setor, defeito, status, qualidade, qtd, aging
+- Clique em qualquer linha também filtra pelo PN
+- Filtra automaticamente quando PN selecionado no gráfico (colunas opacas para outros PNs)
+
+#### Painel Drilldown (aparece quando PN selecionado)
+- Métricas resumidas: nº de lotes, qtd aberta, qtd inicial, aging médio colorido
+- **Gráfico de Área stepAfter** — evolução de "peças em processo" ao longo do tempo:
+  - Entrada inicial → +qtd
+  - Evento de aprovação → -qtd
+  - Evento de sucata → -qtd
+  - Estorno de entrada → -qtd
+  - Resultado: step function mostrando velocidade de resolução
+- **Tabela de lotes do PN** com link para detalhe
+- **Linha do Tempo de Eventos** (tabela cronológica):
+  - Data/hora, código do lote, tipo de evento, de→para, quantidade (com delta +/-), total em processo
+  - Combina movimentações + eventos de qualidade em ordem cronológica
+
+**Queries adicionadas:**
+```typescript
+// Ativadas somente quando PN é selecionado
+['dash-movements', selectedPN]  → lot_movements with from_stage/to_stage
+['dash-quality', selectedPN]    → quality_events para o drilldown
+```
+
+**Arquivos:** `src/pages/DashboardPage.tsx`
+
+---
+
+### 20.7 Funcionalidade: Exportação de Relatório Completo em Excel (.xlsx)
+
+#### Biblioteca adicionada
+- `xlsx@^0.18.5` (SheetJS Community Edition) — geração de .xlsx no browser sem dependência de servidor
+
+#### Arquivo `src/lib/exportExcel.ts`
+Exporta função `exportCompleteReport()`:
+
+| Aba | Conteúdo |
+|---|---|
+| Resumo | KPIs executivos: lotes por status, quantidades, aging buckets, taxa de sucata, totais de eventos |
+| Lotes | Todos os lotes com todos os campos: código, PN, descrição, família, material, qtd inicial/aberta, setor, status, qualidade, defeito, bloqueio, criador, datas, aging |
+| Movimentações | Todas as movimentações com de/para etapa, quantidade, responsável, estornado?, ID do estorno |
+| Qualidade | Todos os eventos de qualidade com tipo, quantidade, documento, resultado, criador |
+| Sucata | Todos os eventos de sucata com quantidade, motivo, aprovador |
+
+- Busca todos os dados em paralelo com `Promise.all`
+- Larguras de coluna configuradas por aba (`!cols`)
+- Nome do arquivo: `Relatório_Sistema_Retrabalho_DD-MM-YYYY_HH-mm-ss.xlsx`
+
+#### Interface (LotsListPage)
+- Botão **"Exportar Excel"** com ícone Microsoft Excel SVG customizado (verde #217346)
+- Spinner durante geração (estado `exporting`)
+- Botão disponível para todos os usuários aprovados (não apenas admin)
+- Toast de sucesso ou erro após a operação
+
+**Arquivos:** `src/lib/exportExcel.ts`, `src/pages/LotsListPage.tsx`, `package.json`
+
+---
+
+### 20.8 Estado atual do sistema (2026-05-15)
+
+**Migrations aplicadas no Supabase:**
+- 001 a 010: aplicadas desde a criação inicial
+- 011 (is_reversed + reverse_lot_movement v1): **pendente aplicação manual**
+- 012 (estorno parcial + initial): **pendente aplicação manual**
+- 013 (admin edit/delete): **pendente aplicação manual**
+
+**Últimos commits:**
+- `9b49e29` — fix: type state as string to satisfy Select onValueChange (TypeScript fix de deploy)
+- `1444424` — feat: editar/excluir lotes (admin) + dashboard interativo com drilldown
+- `f1324de` — feat: estorno parcial e suporte a entrada inicial
+
+**URL de produção:** `https://retrabalhofabrica.yurifelipen8n.cloud`
+
+**Stack atualizada:**
+- Recharts: gráficos BarChart, PieChart, AreaChart (stepAfter para timeline)
+- xlsx 0.18.5: geração de relatórios Excel no browser
+- Novos padrões: useMemo para computações de drilldown, queries condicionais com `enabled`
