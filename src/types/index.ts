@@ -97,6 +97,8 @@ export interface LotMovement {
   moved_by: string | null
   notes: string | null
   created_at: string
+  is_reversed: boolean
+  reversal_of_movement_id: string | null
   from_stage?: ProcessStage
   to_stage?: ProcessStage
   mover?: Profile

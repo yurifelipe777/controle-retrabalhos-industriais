@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
@@ -5,10 +6,13 @@ import { calcAgingDays, formatDateTime, formatQuantity } from '../lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
+import { Textarea } from '../components/ui/textarea'
 import { useAuth } from '../hooks/useAuth'
 import { toast } from '../components/ui/use-toast'
 import {
-  ArrowLeft, MoveRight, ShieldCheck, CheckCircle, XCircle, Trash2, Lock, Unlock, X, RefreshCw
+  ArrowLeft, MoveRight, ShieldCheck, CheckCircle, Trash2, Lock, X, RefreshCw,
+  RotateCcw, AlertTriangle, ChevronRight,
 } from 'lucide-react'
 import type { ReworkLot, LotMovement, QualityEvent, ScrapEvent, LotStageBalance } from '../types'
 
@@ -29,11 +33,214 @@ const QUALITY_EVENT_LABELS: Record<string, string> = {
   approve: 'Aprovação', reject: 'Reprovação', send_to_scrap: 'Sucata',
 }
 
+const MOVEMENT_TYPE_LABELS: Record<string, string> = {
+  initial: 'Entrada inicial',
+  transfer: 'Transferência',
+  adjustment: 'Ajuste',
+  reversal: 'Estorno',
+}
+
+// ──────────────────────────────────────────────
+// Modal de estorno
+// ──────────────────────────────────────────────
+interface ReversalModalProps {
+  movements: LotMovement[]
+  lotStatus: string
+  onClose: () => void
+  onSuccess: () => void
+}
+
+function ReversalModal({ movements, lotStatus, onClose, onSuccess }: ReversalModalProps) {
+  const [step, setStep] = useState<'select' | 'confirm'>('select')
+  const [selected, setSelected] = useState<LotMovement | null>(null)
+  const [reason, setReason] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const reversibleMovements = movements.filter(
+    m => m.movement_type === 'transfer' && !m.is_reversed,
+  )
+
+  const handleSelectMovement = (m: LotMovement) => {
+    setSelected(m)
+    setStep('confirm')
+  }
+
+  const handleConfirm = async () => {
+    if (!selected || !reason.trim()) return
+    setIsSubmitting(true)
+    try {
+      const { error } = await supabase.rpc('reverse_lot_movement', {
+        p_movement_id: selected.id,
+        p_reason: reason.trim(),
+      })
+      if (error) throw error
+      toast({ title: 'Estorno registrado com sucesso', description: `Movimentação estornada. Motivo: ${reason.trim()}` })
+      onSuccess()
+      onClose()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao processar estorno'
+      toast({ variant: 'destructive', title: 'Erro no estorno', description: msg })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const lotClosed = ['closed', 'cancelled'].includes(lotStatus)
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <RotateCcw className="h-5 w-5 text-amber-400" />
+            {step === 'select' ? 'Selecionar movimentação para estornar' : 'Confirmar estorno'}
+          </DialogTitle>
+        </DialogHeader>
+
+        {lotClosed && (
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            Lote encerrado ou cancelado — estorno não permitido.
+          </div>
+        )}
+
+        {step === 'select' && !lotClosed && (
+          <>
+            <p className="text-sm text-muted-foreground">
+              Selecione a movimentação que deseja estornar. O estorno cria um registro inverso,
+              devolvendo a quantidade à etapa de origem. O histórico original é preservado.
+            </p>
+
+            {reversibleMovements.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                <RotateCcw className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                <p>Nenhuma movimentação disponível para estorno.</p>
+                <p className="text-xs mt-1">Movimentos iniciais, ajustes e estornos anteriores não são estornáveis.</p>
+              </div>
+            ) : (
+              <div className="space-y-1 max-h-72 overflow-y-auto">
+                {reversibleMovements.map(m => {
+                  const from = m.from_stage as { name: string } | undefined
+                  const to = m.to_stage as { name: string } | undefined
+                  const mover = m.mover as { full_name: string } | undefined
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => handleSelectMovement(m)}
+                      className="w-full text-left flex items-center gap-3 px-3 py-3 rounded-lg border border-border/50 hover:border-amber-400/40 hover:bg-amber-400/5 transition-all group"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap text-sm font-medium">
+                          <span className="text-muted-foreground">{from?.name ?? 'Entrada'}</span>
+                          <MoveRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <span className="text-primary">{to?.name}</span>
+                          <Badge variant="outline" className="ml-1 text-xs">{formatQuantity(m.quantity)} pç</Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {mover?.full_name ?? '—'} • {formatDateTime(m.moved_at)}
+                        </p>
+                        {m.notes && (
+                          <p className="text-xs text-muted-foreground/70 mt-0.5 truncate">{m.notes}</p>
+                        )}
+                      </div>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-amber-400 shrink-0 transition-colors" />
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            <div className="mt-2 p-3 rounded-lg bg-amber-400/5 border border-amber-400/20 text-xs text-amber-300/80 space-y-1">
+              <p><strong>Atenção:</strong> O estorno só é possível se houver saldo suficiente na etapa de destino da movimentação original.</p>
+              <p>Movimentos posteriores que consumiram esse saldo impedem o estorno.</p>
+            </div>
+          </>
+        )}
+
+        {step === 'confirm' && selected && (
+          <>
+            <div className="space-y-3">
+              <div className="p-3 rounded-lg border border-amber-400/30 bg-amber-400/5 space-y-2">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Movimentação a estornar</p>
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-muted-foreground">
+                    {(selected.from_stage as { name: string } | undefined)?.name ?? 'Entrada'}
+                  </span>
+                  <MoveRight className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-primary font-medium">
+                    {(selected.to_stage as { name: string } | undefined)?.name}
+                  </span>
+                  <Badge variant="outline" className="ml-auto">{formatQuantity(selected.quantity)} pç</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {(selected.mover as { full_name: string } | undefined)?.full_name} • {formatDateTime(selected.moved_at)}
+                </p>
+                {selected.notes && (
+                  <p className="text-xs text-muted-foreground/70 italic">"{selected.notes}"</p>
+                )}
+              </div>
+
+              <div className="p-3 rounded-lg border border-border/50 bg-background/40 text-xs text-muted-foreground space-y-0.5">
+                <p className="font-medium text-foreground/80">O que acontecerá:</p>
+                <p>• Um novo registro de <strong>estorno</strong> será criado no histórico</p>
+                <p>• {formatQuantity(selected.quantity)} pç voltarão para{' '}
+                  <strong>{(selected.from_stage as { name: string } | undefined)?.name ?? 'Entrada'}</strong>
+                </p>
+                <p>• A movimentação original ficará marcada como estornada</p>
+                <p>• O evento será registrado em Auditoria</p>
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground font-medium block mb-1.5">
+                  Motivo do estorno <span className="text-red-400">*</span>
+                </label>
+                <Textarea
+                  placeholder="Descreva o motivo do estorno (ex: quantidade lançada incorretamente, etapa errada...)"
+                  value={reason}
+                  onChange={e => setReason(e.target.value)}
+                  rows={3}
+                  className="text-sm resize-none"
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2 flex-col sm:flex-row">
+              <Button variant="outline" size="sm" onClick={() => { setStep('select'); setReason('') }}>
+                Voltar
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleConfirm}
+                disabled={!reason.trim() || isSubmitting}
+                className="gap-1.5 bg-amber-500 hover:bg-amber-600 text-white"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                {isSubmitting ? 'Processando...' : 'Confirmar Estorno'}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+
+        {step === 'select' && (
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={onClose}>Fechar</Button>
+          </DialogFooter>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ──────────────────────────────────────────────
+// Página principal
+// ──────────────────────────────────────────────
 export default function LotDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { isAdmin, isQuality } = useAuth()
   const queryClient = useQueryClient()
+  const [showReversalModal, setShowReversalModal] = useState(false)
 
   const { data: lot, isLoading } = useQuery({
     queryKey: ['lot-detail', id],
@@ -97,6 +304,12 @@ export default function LotDetailPage() {
     },
   })
 
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ['lot-detail', id] })
+    queryClient.invalidateQueries({ queryKey: ['lot-movements', id] })
+    queryClient.invalidateQueries({ queryKey: ['lot-balances', id] })
+  }
+
   const handleCloseLot = async () => {
     if (!confirm('Encerrar este lote? Esta ação é irreversível.')) return
     const { error } = await supabase.rpc('close_lot', { p_lot_id: id! })
@@ -104,7 +317,7 @@ export default function LotDetailPage() {
       toast({ variant: 'destructive', title: 'Erro ao encerrar lote', description: error.message })
     } else {
       toast({ title: 'Lote encerrado com sucesso!' })
-      queryClient.invalidateQueries({ queryKey: ['lot-detail', id] })
+      invalidateAll()
     }
   }
 
@@ -126,6 +339,8 @@ export default function LotDetailPage() {
   const aging = calcAgingDays(lot.opened_at)
   const noBloqueio = lot.quality_status === 'pending_block' && !['closed', 'cancelled'].includes(lot.current_status)
   const canClose = lot.quantity_open === 0 && !['closed', 'cancelled'].includes(lot.current_status)
+  const canReverse = !['closed', 'cancelled'].includes(lot.current_status)
+    && movements.some(m => m.movement_type === 'transfer' && !m.is_reversed)
 
   return (
     <div className="space-y-4 max-w-4xl mx-auto">
@@ -152,7 +367,7 @@ export default function LotDetailPage() {
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => queryClient.invalidateQueries({ queryKey: ['lot-detail', id] })}
+          onClick={() => invalidateAll()}
         >
           <RefreshCw className="h-4 w-4" />
         </Button>
@@ -174,6 +389,17 @@ export default function LotDetailPage() {
               Movimentar
             </Button>
           </Link>
+        )}
+        {canReverse && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1 text-amber-400 border-amber-400/30 hover:bg-amber-400/10"
+            onClick={() => setShowReversalModal(true)}
+          >
+            <RotateCcw className="h-4 w-4" />
+            Estorno
+          </Button>
         )}
         {isQuality && !['closed', 'cancelled'].includes(lot.current_status) && (
           <>
@@ -286,30 +512,67 @@ export default function LotDetailPage() {
       {/* Movimentações */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Histórico de Movimentações ({movements.length})</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm">Histórico de Movimentações ({movements.length})</CardTitle>
+            {canReverse && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1 text-amber-400 hover:text-amber-300 hover:bg-amber-400/10 h-7 text-xs"
+                onClick={() => setShowReversalModal(true)}
+              >
+                <RotateCcw className="h-3 w-3" />
+                Estornar
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {movements.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">Nenhuma movimentação registrada</p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-0">
               {movements.map(m => {
                 const from = m.from_stage as { name: string } | undefined
                 const to = m.to_stage as { name: string } | undefined
                 const mover = m.mover as { full_name: string } | undefined
+                const isReversal = m.movement_type === 'reversal'
+                const isReversed = m.is_reversed
+
                 return (
-                  <div key={m.id} className="flex items-start gap-2 py-2 border-b border-border/50 last:border-0 text-sm">
-                    <MoveRight className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                    <div className="flex-1">
+                  <div
+                    key={m.id}
+                    className={`flex items-start gap-2 py-2.5 border-b border-border/50 last:border-0 text-sm ${isReversed ? 'opacity-50' : ''}`}
+                  >
+                    <div className={`mt-0.5 shrink-0 ${isReversal ? 'text-amber-400' : 'text-muted-foreground'}`}>
+                      {isReversal
+                        ? <RotateCcw className="h-4 w-4" />
+                        : <MoveRight className="h-4 w-4" />
+                      }
+                    </div>
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1 flex-wrap">
                         <span className="text-muted-foreground">{from?.name ?? 'Entrada'}</span>
                         <span className="text-muted-foreground">→</span>
-                        <span className="text-primary">{to?.name}</span>
+                        <span className={isReversal ? 'text-amber-400' : 'text-primary'}>{to?.name}</span>
                         <span className="font-medium ml-1">{formatQuantity(m.quantity)} pç</span>
+                        <Badge
+                          variant={isReversal ? 'warning' : m.movement_type === 'initial' ? 'muted' : 'outline'}
+                          className="text-xs ml-1"
+                        >
+                          {MOVEMENT_TYPE_LABELS[m.movement_type] ?? m.movement_type}
+                        </Badge>
+                        {isReversed && (
+                          <Badge variant="muted" className="text-xs">estornado</Badge>
+                        )}
                       </div>
-                      {m.notes && <p className="text-xs text-muted-foreground mt-0.5">{m.notes}</p>}
+                      {m.notes && (
+                        <p className={`text-xs mt-0.5 ${isReversal ? 'text-amber-400/70' : 'text-muted-foreground'}`}>
+                          {m.notes}
+                        </p>
+                      )}
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {mover?.full_name} • {formatDateTime(m.moved_at)}
+                        {mover?.full_name ?? '—'} • {formatDateTime(m.moved_at)}
                       </p>
                     </div>
                   </div>
@@ -331,7 +594,7 @@ export default function LotDetailPage() {
           ) : (
             <div className="space-y-2">
               {qualityEvents.map(e => {
-                const creator = e.creator as { full_name: string } | undefined
+                const qCreator = e.creator as { full_name: string } | undefined
                 return (
                   <div key={e.id} className="flex items-start gap-2 py-2 border-b border-border/50 last:border-0 text-sm">
                     <ShieldCheck className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
@@ -344,7 +607,7 @@ export default function LotDetailPage() {
                         {e.quality_document && <span className="text-xs text-muted-foreground font-mono">{e.quality_document}</span>}
                       </div>
                       {e.notes && <p className="text-xs text-muted-foreground mt-0.5">{e.notes}</p>}
-                      <p className="text-xs text-muted-foreground mt-0.5">{creator?.full_name} • {formatDateTime(e.created_at)}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{qCreator?.full_name} • {formatDateTime(e.created_at)}</p>
                     </div>
                   </div>
                 )
@@ -353,6 +616,16 @@ export default function LotDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Modal de estorno */}
+      {showReversalModal && lot && (
+        <ReversalModal
+          movements={movements}
+          lotStatus={lot.current_status}
+          onClose={() => setShowReversalModal(false)}
+          onSuccess={invalidateAll}
+        />
+      )}
     </div>
   )
 }
