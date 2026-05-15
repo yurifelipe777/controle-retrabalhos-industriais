@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
@@ -8,6 +8,7 @@ import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
 import { Textarea } from '../components/ui/textarea'
+import { Input } from '../components/ui/input'
 import { useAuth } from '../hooks/useAuth'
 import { toast } from '../components/ui/use-toast'
 import {
@@ -43,6 +44,11 @@ const MOVEMENT_TYPE_LABELS: Record<string, string> = {
 // ──────────────────────────────────────────────
 // Modal de estorno
 // ──────────────────────────────────────────────
+interface ReversibleMovement extends LotMovement {
+  alreadyReversedQty: number
+  reversibleQty: number
+}
+
 interface ReversalModalProps {
   movements: LotMovement[]
   lotStatus: string
@@ -52,29 +58,53 @@ interface ReversalModalProps {
 
 function ReversalModal({ movements, lotStatus, onClose, onSuccess }: ReversalModalProps) {
   const [step, setStep] = useState<'select' | 'confirm'>('select')
-  const [selected, setSelected] = useState<LotMovement | null>(null)
+  const [selected, setSelected] = useState<ReversibleMovement | null>(null)
   const [reason, setReason] = useState('')
+  const [qtyInput, setQtyInput] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const reversibleMovements = movements.filter(
-    m => m.movement_type === 'transfer' && !m.is_reversed,
-  )
+  // Calcula quanto já foi estornado por movimento (client-side via lista de reversals)
+  const reversibleMovements = useMemo<ReversibleMovement[]>(() => {
+    const reversedByOrigin: Record<string, number> = {}
+    for (const m of movements) {
+      if (m.movement_type === 'reversal' && m.reversal_of_movement_id) {
+        reversedByOrigin[m.reversal_of_movement_id] =
+          (reversedByOrigin[m.reversal_of_movement_id] ?? 0) + m.quantity
+      }
+    }
+    return movements
+      .filter(m => m.movement_type === 'transfer' || m.movement_type === 'initial')
+      .map(m => ({
+        ...m,
+        alreadyReversedQty: reversedByOrigin[m.id] ?? 0,
+        reversibleQty: m.quantity - (reversedByOrigin[m.id] ?? 0),
+      }))
+      .filter(m => m.reversibleQty > 0)
+  }, [movements])
 
-  const handleSelectMovement = (m: LotMovement) => {
+  const handleSelectMovement = (m: ReversibleMovement) => {
     setSelected(m)
+    setQtyInput(String(m.reversibleQty))
     setStep('confirm')
   }
 
+  const parsedQty = parseFloat(qtyInput.replace(',', '.'))
+  const qtyValid = !isNaN(parsedQty) && parsedQty > 0 && selected !== null && parsedQty <= selected.reversibleQty
+
   const handleConfirm = async () => {
-    if (!selected || !reason.trim()) return
+    if (!selected || !reason.trim() || !qtyValid) return
     setIsSubmitting(true)
     try {
       const { error } = await supabase.rpc('reverse_lot_movement', {
         p_movement_id: selected.id,
         p_reason: reason.trim(),
+        p_quantity: parsedQty,
       })
       if (error) throw error
-      toast({ title: 'Estorno registrado com sucesso', description: `Movimentação estornada. Motivo: ${reason.trim()}` })
+      toast({
+        title: 'Estorno registrado',
+        description: `${formatQuantity(parsedQty)} pç estornada(s). Motivo: ${reason.trim()}`,
+      })
       onSuccess()
       onClose()
     } catch (err: unknown) {
@@ -93,7 +123,7 @@ function ReversalModal({ movements, lotStatus, onClose, onSuccess }: ReversalMod
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <RotateCcw className="h-5 w-5 text-amber-400" />
-            {step === 'select' ? 'Selecionar movimentação para estornar' : 'Confirmar estorno'}
+            {step === 'select' ? 'Selecionar lançamento para estornar' : 'Confirmar estorno'}
           </DialogTitle>
         </DialogHeader>
 
@@ -107,22 +137,23 @@ function ReversalModal({ movements, lotStatus, onClose, onSuccess }: ReversalMod
         {step === 'select' && !lotClosed && (
           <>
             <p className="text-sm text-muted-foreground">
-              Selecione a movimentação que deseja estornar. O estorno cria um registro inverso,
-              devolvendo a quantidade à etapa de origem. O histórico original é preservado.
+              Selecione o lançamento a corrigir. Você poderá informar a quantidade parcial ou total.
+              O histórico original é sempre preservado.
             </p>
 
             {reversibleMovements.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground text-sm">
                 <RotateCcw className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                <p>Nenhuma movimentação disponível para estorno.</p>
-                <p className="text-xs mt-1">Movimentos iniciais, ajustes e estornos anteriores não são estornáveis.</p>
+                <p>Nenhum lançamento disponível para estorno.</p>
               </div>
             ) : (
-              <div className="space-y-1 max-h-72 overflow-y-auto">
+              <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
                 {reversibleMovements.map(m => {
                   const from = m.from_stage as { name: string } | undefined
                   const to = m.to_stage as { name: string } | undefined
                   const mover = m.mover as { full_name: string } | undefined
+                  const isInitial = m.movement_type === 'initial'
+                  const isPartial = m.alreadyReversedQty > 0
                   return (
                     <button
                       key={m.id}
@@ -135,13 +166,25 @@ function ReversalModal({ movements, lotStatus, onClose, onSuccess }: ReversalMod
                           <span className="text-muted-foreground">{from?.name ?? 'Entrada'}</span>
                           <MoveRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                           <span className="text-primary">{to?.name}</span>
-                          <Badge variant="outline" className="ml-1 text-xs">{formatQuantity(m.quantity)} pç</Badge>
+                          {isInitial && (
+                            <Badge variant="muted" className="text-xs">Entrada inicial</Badge>
+                          )}
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs text-muted-foreground">
+                            {formatQuantity(m.reversibleQty)} pç disponíveis para estorno
+                            {isPartial && (
+                              <span className="text-amber-400/70 ml-1">
+                                ({formatQuantity(m.alreadyReversedQty)} já estornadas)
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground/70 mt-0.5">
                           {mover?.full_name ?? '—'} • {formatDateTime(m.moved_at)}
                         </p>
-                        {m.notes && (
-                          <p className="text-xs text-muted-foreground/70 mt-0.5 truncate">{m.notes}</p>
+                        {m.notes && !m.notes.startsWith('ESTORNO') && (
+                          <p className="text-xs text-muted-foreground/50 mt-0.5 truncate italic">"{m.notes}"</p>
                         )}
                       </div>
                       <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-amber-400 shrink-0 transition-colors" />
@@ -151,52 +194,100 @@ function ReversalModal({ movements, lotStatus, onClose, onSuccess }: ReversalMod
               </div>
             )}
 
-            <div className="mt-2 p-3 rounded-lg bg-amber-400/5 border border-amber-400/20 text-xs text-amber-300/80 space-y-1">
-              <p><strong>Atenção:</strong> O estorno só é possível se houver saldo suficiente na etapa de destino da movimentação original.</p>
-              <p>Movimentos posteriores que consumiram esse saldo impedem o estorno.</p>
+            <div className="p-3 rounded-lg bg-amber-400/5 border border-amber-400/20 text-xs text-amber-300/80 space-y-1">
+              <p><strong>Atenção:</strong> O estorno só é possível se houver saldo suficiente na etapa onde o material está.
+              Movimentos posteriores que consumiram esse saldo impedem o estorno.</p>
             </div>
+
+            <DialogFooter>
+              <Button variant="outline" size="sm" onClick={onClose}>Fechar</Button>
+            </DialogFooter>
           </>
         )}
 
         {step === 'confirm' && selected && (
           <>
             <div className="space-y-3">
-              <div className="p-3 rounded-lg border border-amber-400/30 bg-amber-400/5 space-y-2">
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Movimentação a estornar</p>
+              {/* Resumo do lançamento */}
+              <div className="p-3 rounded-lg border border-amber-400/30 bg-amber-400/5 space-y-1.5">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
+                  {selected.movement_type === 'initial' ? 'Entrada inicial a corrigir' : 'Transferência a estornar'}
+                </p>
                 <div className="flex items-center gap-2 text-sm">
                   <span className="text-muted-foreground">
                     {(selected.from_stage as { name: string } | undefined)?.name ?? 'Entrada'}
                   </span>
-                  <MoveRight className="h-3.5 w-3.5 text-muted-foreground" />
+                  <MoveRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                   <span className="text-primary font-medium">
                     {(selected.to_stage as { name: string } | undefined)?.name}
                   </span>
-                  <Badge variant="outline" className="ml-auto">{formatQuantity(selected.quantity)} pç</Badge>
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    total: {formatQuantity(selected.quantity)} pç
+                  </span>
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {(selected.mover as { full_name: string } | undefined)?.full_name} • {formatDateTime(selected.moved_at)}
                 </p>
-                {selected.notes && (
-                  <p className="text-xs text-muted-foreground/70 italic">"{selected.notes}"</p>
+                {selected.notes && !selected.notes.startsWith('ESTORNO') && (
+                  <p className="text-xs text-muted-foreground/60 italic">"{selected.notes}"</p>
                 )}
               </div>
 
-              <div className="p-3 rounded-lg border border-border/50 bg-background/40 text-xs text-muted-foreground space-y-0.5">
-                <p className="font-medium text-foreground/80">O que acontecerá:</p>
-                <p>• Um novo registro de <strong>estorno</strong> será criado no histórico</p>
-                <p>• {formatQuantity(selected.quantity)} pç voltarão para{' '}
-                  <strong>{(selected.from_stage as { name: string } | undefined)?.name ?? 'Entrada'}</strong>
-                </p>
-                <p>• A movimentação original ficará marcada como estornada</p>
-                <p>• O evento será registrado em Auditoria</p>
+              {/* Quantidade a estornar */}
+              <div>
+                <label className="text-xs text-muted-foreground font-medium block mb-1.5">
+                  Quantidade a estornar <span className="text-red-400">*</span>
+                  <span className="ml-1 font-normal text-muted-foreground/60">
+                    (máx: {formatQuantity(selected.reversibleQty)} pç)
+                  </span>
+                </label>
+                <Input
+                  type="number"
+                  min={0.01}
+                  max={selected.reversibleQty}
+                  step="any"
+                  value={qtyInput}
+                  onChange={e => setQtyInput(e.target.value)}
+                  className="text-sm"
+                  placeholder={`Ex: ${formatQuantity(selected.reversibleQty)}`}
+                />
+                {qtyInput && !qtyValid && (
+                  <p className="text-xs text-red-400 mt-1">
+                    Valor inválido. Informe entre 0,01 e {formatQuantity(selected.reversibleQty)} pç.
+                  </p>
+                )}
               </div>
 
+              {/* Impacto */}
+              {qtyValid && (
+                <div className="p-3 rounded-lg border border-border/50 bg-background/40 text-xs text-muted-foreground space-y-0.5">
+                  <p className="font-medium text-foreground/80">O que acontecerá:</p>
+                  {selected.movement_type === 'initial' ? (
+                    <>
+                      <p>• <strong>{formatQuantity(parsedQty)} pç</strong> serão removidas do saldo do lote</p>
+                      <p>• O saldo em <strong>{(selected.to_stage as { name: string } | undefined)?.name}</strong> será reduzido</p>
+                      <p>• A quantidade aberta do lote diminuirá em {formatQuantity(parsedQty)} pç</p>
+                    </>
+                  ) : (
+                    <>
+                      <p>• <strong>{formatQuantity(parsedQty)} pç</strong> voltarão para{' '}
+                        <strong>{(selected.from_stage as { name: string } | undefined)?.name ?? 'Entrada'}</strong>
+                      </p>
+                      <p>• O saldo em <strong>{(selected.to_stage as { name: string } | undefined)?.name}</strong> será reduzido</p>
+                    </>
+                  )}
+                  <p>• Um registro de <strong>estorno</strong> será criado no histórico</p>
+                  <p>• O evento será registrado em Auditoria</p>
+                </div>
+              )}
+
+              {/* Motivo */}
               <div>
                 <label className="text-xs text-muted-foreground font-medium block mb-1.5">
                   Motivo do estorno <span className="text-red-400">*</span>
                 </label>
                 <Textarea
-                  placeholder="Descreva o motivo do estorno (ex: quantidade lançada incorretamente, etapa errada...)"
+                  placeholder="Descreva o motivo (ex: quantidade lançada incorretamente, etapa errada...)"
                   value={reason}
                   onChange={e => setReason(e.target.value)}
                   rows={3}
@@ -206,13 +297,13 @@ function ReversalModal({ movements, lotStatus, onClose, onSuccess }: ReversalMod
             </div>
 
             <DialogFooter className="gap-2 flex-col sm:flex-row">
-              <Button variant="outline" size="sm" onClick={() => { setStep('select'); setReason('') }}>
+              <Button variant="outline" size="sm" onClick={() => { setStep('select'); setReason(''); setQtyInput('') }}>
                 Voltar
               </Button>
               <Button
                 size="sm"
                 onClick={handleConfirm}
-                disabled={!reason.trim() || isSubmitting}
+                disabled={!reason.trim() || !qtyValid || isSubmitting}
                 className="gap-1.5 bg-amber-500 hover:bg-amber-600 text-white"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
@@ -220,12 +311,6 @@ function ReversalModal({ movements, lotStatus, onClose, onSuccess }: ReversalMod
               </Button>
             </DialogFooter>
           </>
-        )}
-
-        {step === 'select' && (
-          <DialogFooter>
-            <Button variant="outline" size="sm" onClick={onClose}>Fechar</Button>
-          </DialogFooter>
         )}
       </DialogContent>
     </Dialog>
@@ -340,7 +425,7 @@ export default function LotDetailPage() {
   const noBloqueio = lot.quality_status === 'pending_block' && !['closed', 'cancelled'].includes(lot.current_status)
   const canClose = lot.quantity_open === 0 && !['closed', 'cancelled'].includes(lot.current_status)
   const canReverse = !['closed', 'cancelled'].includes(lot.current_status)
-    && movements.some(m => m.movement_type === 'transfer' && !m.is_reversed)
+    && movements.some(m => (m.movement_type === 'transfer' || m.movement_type === 'initial') && !m.is_reversed)
 
   return (
     <div className="space-y-4 max-w-4xl mx-auto">

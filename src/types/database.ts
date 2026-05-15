@@ -436,6 +436,7 @@ export interface Database {
         Args: {
           p_movement_id: string
           p_reason: string
+          p_quantity?: number
         }
         Returns: string
       }
