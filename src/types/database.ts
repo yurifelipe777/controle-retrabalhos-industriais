@@ -176,6 +176,8 @@ export interface Database {
           moved_by: string | null
           notes: string | null
           created_at: string
+          is_reversed: boolean
+          reversal_of_movement_id: string | null
         }
         Insert: {
           id?: string
@@ -187,9 +189,12 @@ export interface Database {
           moved_at?: string
           moved_by?: string | null
           notes?: string | null
+          is_reversed?: boolean
+          reversal_of_movement_id?: string | null
         }
         Update: {
           notes?: string | null
+          is_reversed?: boolean
         }
         Relationships: []
       }
@@ -426,6 +431,13 @@ export interface Database {
       is_quality_user: {
         Args: Record<PropertyKey, never>
         Returns: boolean
+      }
+      reverse_lot_movement: {
+        Args: {
+          p_movement_id: string
+          p_reason: string
+        }
+        Returns: string
       }
     }
     Enums: {
