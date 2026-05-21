@@ -77,8 +77,10 @@ export default function QualityPage() {
         .select(`*, stage:process_stages(id, name, sequence)`)
         .eq('lot_id', dialog.lot!.id)
         .gt('balance_quantity', 0)
-        .not('stage.name', 'eq', 'Decapagem Externa')
-      return (data ?? []) as unknown as LotStageBalance[]
+      // Filtra client-side — filtro em coluna joined não funciona no PostgREST
+      return ((data ?? []) as unknown as LotStageBalance[]).filter(
+        b => (b.stage as { name: string } | undefined)?.name !== 'Decapagem Externa'
+      )
     },
   })
 
