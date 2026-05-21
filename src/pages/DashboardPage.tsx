@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -7,7 +7,7 @@ import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
 import {
   AlertTriangle, Package, Clock, CheckCircle, XCircle, Trash2,
-  TrendingUp, AlertCircle, X, Eye, ChevronRight,
+  TrendingUp, AlertCircle, X, Eye, ChevronRight, FlaskConical,
 } from 'lucide-react'
 import { calcAgingDays, formatDate, formatDateTime, formatQuantity, formatPercent } from '../lib/utils'
 import {
@@ -85,11 +85,13 @@ function StatCard({
 // ─────────────────────────────────────────────
 // Tooltip customizado do gráfico de barras
 // ─────────────────────────────────────────────
-function BarTooltip({ active, payload, label }: { active?: boolean; payload?: { value: number }[]; label?: string }) {
+function BarTooltip({ active, payload }: { active?: boolean; payload?: { value: number; payload: { label: string; qty: number; descricao: string } }[] }) {
   if (!active || !payload?.length) return null
+  const entry = payload[0].payload
   return (
-    <div className="bg-[hsl(225,40%,10%)] border border-white/10 rounded-lg px-3 py-2 text-xs">
-      <p className="font-mono font-semibold text-white/80 mb-0.5">{label}</p>
+    <div className="bg-[hsl(225,40%,10%)] border border-white/10 rounded-lg px-3 py-2 text-xs max-w-[220px]">
+      <p className="font-mono font-semibold text-white/80 mb-0.5">{entry.label}</p>
+      {entry.descricao && <p className="text-white/40 mb-1 leading-tight">{entry.descricao}</p>}
       <p style={{ color: '#E8291C' }}>{formatQuantity(payload[0].value)} pç abertas</p>
     </div>
   )
@@ -214,6 +216,22 @@ export default function DashboardPage() {
     pnMap[pn].qty += l.quantity_open
   })
   const topPNs = Object.values(pnMap).sort((a, b) => b.qty - a.qty).slice(0, 10)
+
+  const decapagemLots = lots.filter(l => l.current_status === 'awaiting_decapagem')
+  const decapagemQty = decapagemLots.reduce((s, l) => s + l.quantity_open, 0)
+
+  // Custom Y-axis tick showing PN + truncated description
+  const BarYTick = useCallback(({ x, y, payload }: { x: number; y: number; payload: { value: string } }) => {
+    const entry = topPNs.find(p => p.label === payload.value)
+    const desc = entry?.descricao ?? ''
+    const shortDesc = desc.length > 26 ? desc.slice(0, 26) + '…' : desc
+    return (
+      <g transform={`translate(${x},${y})`}>
+        <text x={-5} y={-4} textAnchor="end" fontSize={10} fill="rgba(255,255,255,0.65)" fontFamily="'Courier New', monospace">{payload.value}</text>
+        <text x={-5} y={8} textAnchor="end" fontSize={8} fill="rgba(255,255,255,0.35)">{shortDesc}</text>
+      </g>
+    )
+  }, [topPNs])
 
   // ── Timeline data (drilldown) ─────────────
   const lotCodeMap = useMemo(
@@ -352,9 +370,16 @@ export default function DashboardPage() {
         <StatCard title="Taxa de Sucata" value={formatPercent(scrapRate)} icon={Trash2} variant="warning" />
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <StatCard title="Total Aprovado" value={formatQuantity(approvedTotal ?? 0)} icon={CheckCircle} variant="success" />
         <StatCard title="Total Sucateado" value={formatQuantity(scrapTotal ?? 0)} icon={XCircle} variant="danger" />
+        <StatCard
+          title="Em Decapagem"
+          value={decapagemLots.length}
+          icon={FlaskConical}
+          variant="warning"
+          subtitle={decapagemLots.length > 0 ? `${formatQuantity(decapagemQty)} pç aguardando retorno` : 'Nenhum lote em decapagem'}
+        />
       </div>
 
       {/* Gráficos */}
@@ -384,11 +409,11 @@ export default function DashboardPage() {
             {topPNs.length === 0 ? (
               <p className="text-center text-muted-foreground text-sm py-8">Nenhum dado disponível</p>
             ) : (
-              <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={topPNs} layout="vertical">
+              <ResponsiveContainer width="100%" height={320}>
+                <BarChart data={topPNs} layout="vertical" margin={{ left: 0, right: 8, top: 4, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                   <XAxis type="number" tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 11 }} />
-                  <YAxis dataKey="label" type="category" tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 10 }} width={90} />
+                  <YAxis dataKey="label" type="category" tick={BarYTick} width={170} />
                   <Tooltip content={<BarTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
                   <Bar dataKey="qty" name="Qtd Aberta" radius={[0, 4, 4, 0]} cursor="pointer" onClick={handleBarClick}>
                     {topPNs.map((entry, index) => (

@@ -55,9 +55,10 @@ export default function QualityPage() {
     },
   })
 
-  const { data: balances = [] } = useQuery({
+  const { data: balances = [], isFetching: balancesFetching } = useQuery({
     queryKey: ['quality-balances', dialog.lot?.id],
-    enabled: !!dialog.lot?.id && dialog.action !== 'block' && dialog.action !== 'decapagem',
+    enabled: !!dialog.lot?.id && dialog.action !== 'block',
+    staleTime: 0,
     queryFn: async () => {
       const { data } = await supabase
         .from('lot_stage_balances')
@@ -68,21 +69,10 @@ export default function QualityPage() {
     },
   })
 
-  const { data: decapagemBalances = [] } = useQuery({
-    queryKey: ['quality-decapagem-balances', dialog.lot?.id],
-    enabled: !!dialog.lot?.id && dialog.action === 'decapagem',
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('lot_stage_balances')
-        .select(`*, stage:process_stages(id, name, sequence)`)
-        .eq('lot_id', dialog.lot!.id)
-        .gt('balance_quantity', 0)
-      // Filtra client-side — filtro em coluna joined não funciona no PostgREST
-      return ((data ?? []) as unknown as LotStageBalance[]).filter(
-        b => (b.stage as { name: string } | undefined)?.name !== 'Decapagem Externa'
-      )
-    },
-  })
+  // Filtra client-side para decapagem — exclui a própria etapa Decapagem Externa como origem
+  const decapagemBalances = balances.filter(
+    b => (b.stage as { name: string } | undefined)?.name !== 'Decapagem Externa'
+  )
 
   const openDialog = (action: ActionType, lot: ReworkLot) => {
     setDialog({ open: true, action, lot })
@@ -297,13 +287,18 @@ export default function QualityPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Etapa de Origem *</Label>
-                  <Select onValueChange={setFromStageId}>
-                    <SelectTrigger><SelectValue placeholder="Selecione a etapa..." /></SelectTrigger>
+                  <Select onValueChange={setFromStageId} disabled={balancesFetching}>
+                    <SelectTrigger>
+                      <SelectValue placeholder={balancesFetching ? 'Carregando etapas…' : 'Selecione a etapa...'} />
+                    </SelectTrigger>
                     <SelectContent>
                       {decapagemBalances.map(b => {
                         const stage = b.stage as { id: string; name: string } | undefined
                         return <SelectItem key={b.id} value={stage?.id ?? ''}>{stage?.name} — {formatQuantity(b.balance_quantity)} pç</SelectItem>
                       })}
+                      {!balancesFetching && decapagemBalances.length === 0 && (
+                        <div className="px-3 py-2 text-xs text-muted-foreground">Nenhuma etapa com saldo disponível</div>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -322,13 +317,18 @@ export default function QualityPage() {
               <>
                 <div className="space-y-2">
                   <Label>Etapa de Origem *</Label>
-                  <Select onValueChange={setFromStageId}>
-                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                  <Select onValueChange={setFromStageId} disabled={balancesFetching}>
+                    <SelectTrigger>
+                      <SelectValue placeholder={balancesFetching ? 'Carregando etapas…' : 'Selecione...'} />
+                    </SelectTrigger>
                     <SelectContent>
                       {balances.map(b => {
                         const stage = b.stage as { id: string; name: string } | undefined
                         return <SelectItem key={b.id} value={stage?.id ?? ''}>{stage?.name} — {formatQuantity(b.balance_quantity)} pç</SelectItem>
                       })}
+                      {!balancesFetching && balances.length === 0 && (
+                        <div className="px-3 py-2 text-xs text-muted-foreground">Nenhuma etapa com saldo disponível</div>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
