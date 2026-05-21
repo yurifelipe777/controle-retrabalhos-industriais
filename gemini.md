@@ -789,3 +789,220 @@ Exporta função `exportCompleteReport()`:
 - Recharts: gráficos BarChart, PieChart, AreaChart (stepAfter para timeline)
 - xlsx 0.18.5: geração de relatórios Excel no browser
 - Novos padrões: useMemo para computações de drilldown, queries condicionais com `enabled`
+
+---
+
+### 20.9 Funcionalidade: Processo de Decapagem Externa (Migration 014)
+
+**Objetivo:** Controlar o ciclo completo de tratamento químico (decapagem), onde um quadro pintado é convertido em quadro bruto com Part Number diferente.
+
+#### Nova tabela: `decapagem_events`
+
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| id | uuid PK | Identificador do evento |
+| lot_id | uuid FK → rework_lots | Lote que foi enviado |
+| quantity | numeric | Quantidade enviada |
+| from_stage_id | uuid FK → process_stages | Etapa de origem |
+| original_part_number_id | uuid FK → product_master | PN do quadro pintado |
+| return_part_number_id | uuid FK → product_master | PN do quadro bruto (preenchido no retorno) |
+| status | text | dispatched / returned / cancelled |
+| dispatched_at | timestamptz | Momento do envio |
+| dispatched_by | uuid FK → profiles | Quem enviou |
+| returned_at | timestamptz | Momento do retorno |
+| returned_by | uuid FK → profiles | Quem registrou o retorno |
+| returned_lot_id | uuid FK → rework_lots | Novo lote criado com o PN bruto |
+| notes | text | Observações do envio |
+| return_notes | text | Observações do retorno |
+
+#### Nova coluna em `rework_lots`
+- `originated_from_decapagem_id uuid FK → decapagem_events` — aponta para o evento de decapagem que originou este lote (para rastreabilidade De/Para)
+
+#### Novos valores de status em `rework_lots`
+- `current_status`: `awaiting_decapagem` — lote aguardando retorno da decapagem externa
+- `quality_status`: `sent_to_decapagem` — qualidade registrou envio para decapagem
+
+#### Nova RPC: `send_to_decapagem`
+- Requer `quality` ou `admin`
+- Lote deve estar `blocked` ou `in_inspection`
+- Verifica saldo em `lot_stage_balances` para a etapa de origem
+- Registra movimentação para estágio virtual "Decapagem Externa"
+- Cria registro em `decapagem_events` com status `dispatched`
+- Atualiza `rework_lots.current_status = 'awaiting_decapagem'`, `quality_status = 'sent_to_decapagem'`
+
+#### Nova RPC: `return_from_decapagem`
+- Requer `quality` ou `admin`
+- Valida que o evento de decapagem existe e está `dispatched`
+- Cria novo lote com o PN do quadro bruto e a etapa de retorno selecionada
+- Define `new_lot.originated_from_decapagem_id = decapagem_event.id`
+- Atualiza evento para `status = 'returned'`, preenche `return_part_number_id`, `returned_lot_id`
+- Atualiza lote original: `current_status = 'closed'`
+
+#### Nova rota: `/decapagem`
+- Acesso: `quality` e `admin`
+- Aba 1 — **Aguardando Retorno**: lotes com `awaiting_decapagem`, botão "Registrar Retorno"
+- Aba 2 — **Histórico De/Para**: todos os eventos concluídos com De/Para, datas, responsáveis
+
+**Arquivo:** `supabase/migrations/014_decapagem.sql`, `src/pages/DecapagemPage.tsx`
+
+---
+
+### 20.10 Funcionalidade: Factory Reset + Correção admin_delete (Migrations 015/016)
+
+#### Migration 015: Página de Configurações com Factory Reset
+
+**Nova rota:** `/settings` (acesso: todos os aprovados; Reset: apenas `ynascimento@caloi.com`)
+
+**Comportamento do Factory Reset:**
+- Apaga todos os dados transacionais: `quality_events`, `scrap_events`, `attachments` (com `lot_id`), `lot_stage_balances`, `lot_movements`, `decapagem_events`, `rework_lots`, `audit_log`
+- Preserva dados cadastrais: `product_master`, `process_stages`, `profiles`, `defect_types`
+- Proteção dupla: verificação de email na RPC (`SECURITY DEFINER`) + campo de confirmação com texto exato "ZERAR SISTEMA" na UI
+
+**RPC `factory_reset`:**
+- Verifica `auth.uid()` email = `ynascimento@caloi.com`
+- Usa `UPDATE ... SET originated_from_decapagem_id = NULL WHERE IS NOT NULL` para quebrar FK circular antes de deletar
+- Usa `DELETE ... WHERE true` para satisfazer `pg_safeupdate` (extensão Supabase que bloqueia DELETE sem WHERE)
+- Registra evento no `audit_log` após limpeza
+
+#### Migration 016: Correções
+
+**`factory_reset`** — corrigido para incluir `decapagem_events` na ordem de exclusão (adicionado na 014, ausente na 015).
+
+**`admin_delete_rework_lot`** — corrigido para:
+1. Limpar `originated_from_decapagem_id` em lotes que referenciam eventos de decapagem do lote sendo deletado
+2. Cancelar eventos de decapagem que apontam `returned_lot_id` para o lote sendo deletado
+3. Remover a referência circular no próprio lote antes de deletar os eventos de decapagem
+
+**Arquivo:** `supabase/migrations/015_settings_factory_reset.sql`, `supabase/migrations/016_fix_delete_functions.sql`, `src/pages/SettingsPage.tsx`
+
+---
+
+### 20.11 Funcionalidade: Reparo de Saldos + RPCs Tolerantes (Migration 017)
+
+**Problema resolvido:** Lotes com `quantity_open > 0` mas sem entradas em `lot_stage_balances` causavam "Saldo insuficiente" em `send_to_decapagem`, `approve_quantity` e `send_to_scrap`. Causa: trigger `trg_update_stage_balance` não executou no momento da criação do lote (importação direta, factory_reset parcial, inconsistência de migração).
+
+#### Parte 1: Reconstrução de saldos (idempotente)
+```sql
+INSERT INTO lot_stage_balances (lot_id, stage_id, balance_quantity)
+SELECT lot_id, stage_id, GREATEST(0, SUM(delta))
+FROM (
+  SELECT lot_id, to_stage_id AS stage_id, quantity AS delta FROM lot_movements
+  UNION ALL
+  SELECT lot_id, from_stage_id AS stage_id, -quantity AS delta FROM lot_movements WHERE from_stage_id IS NOT NULL
+) all_deltas
+GROUP BY lot_id, stage_id HAVING GREATEST(0, SUM(delta)) > 0
+ON CONFLICT (lot_id, stage_id) DO UPDATE SET balance_quantity = EXCLUDED.balance_quantity;
+DELETE FROM lot_stage_balances WHERE balance_quantity = 0;
+```
+
+#### Parte 2: Fallback nas RPCs
+Padrão aplicado em `send_to_decapagem`, `approve_quantity` e `send_to_scrap`:
+- Se `lot_stage_balances` não tiver entrada para `(lot_id, stage_id)`, inicializa com `rework_lots.quantity_open`
+- Se `quantity_open < p_quantity`, lança exceção com mensagem clara
+- Operação prossegue normalmente após o bootstrap
+
+**Arquivo:** `supabase/migrations/017_repair_balances_and_flexible_rpcs.sql`
+
+---
+
+### 20.12 Melhorias: Dashboard e QualityPage (2026-05-21)
+
+#### Dashboard — novo KPI "Em Decapagem"
+- Terceiro card na segunda fileira de KPIs
+- Exibe: número de lotes com `current_status = 'awaiting_decapagem'`
+- Subtítulo: quantidade total de peças aguardando retorno
+- Ícone `FlaskConical`, variant `warning`
+
+#### Dashboard — gráfico de barras custom (HTML/CSS)
+Substituição completa do `<BarChart>` do recharts por implementação custom:
+- Problema anterior: recharts ocultava automaticamente ticks alternados quando 10 itens não cabiam no layout — resultado: 10 barras mas apenas 5 labels visíveis
+- Solução: lista HTML com div por item; barra de progresso CSS; PN em `font-mono`, descrição truncada em `text-white/30`, quantidade em `tabular-nums`
+- Interatividade preservada: click seleciona PN, item selecionado destaca em vermelho, demais ficam 28% de opacidade
+- Layout sempre correto independentemente do número de itens
+
+#### QualityPage — fluxo de decapagem melhorado
+
+**Dropdown "Etapa de Origem" — correção de estado vazio:**
+- Query unificada com `staleTime: 0` e `enabled: !!dialog.lot?.id && dialog.action !== 'block'`
+- Fallback: quando `lot_stage_balances` não tem entradas, exibe todas as etapas ativas (exceto "Decapagem Externa") com aviso âmbar "Saldo por etapa indisponível — indique em qual etapa o lote se encontra"
+
+**Detecção de saldo já em Decapagem Externa:**
+- `saldoJaNaDecapagem = true` quando: ação = 'decapagem' AND balances carregados AND todos os saldos são da etapa "Decapagem Externa"
+- Quando `saldoJaNaDecapagem`: exibe box ciano com mensagem explicativa e botão "Ir para Decapagem" (navega para `/decapagem`)
+- Quando `saldoJaNaDecapagem`: botão "Enviar para Decapagem" fica oculto no `DialogFooter`
+
+**Regra operacional (treinamento de equipe):**
+- Lotes NUNCA devem ser criados com "Decapagem Externa" como etapa inicial
+- Etapa inicial = etapa produtiva real onde o quadro se encontra fisicamente
+- O envio à decapagem acontece via tela de Qualidade após bloqueio formal
+
+**Arquivo:** `src/pages/DashboardPage.tsx`, `src/pages/QualityPage.tsx`
+
+---
+
+### 20.13 Manual do Sistema (ManualPage)
+
+**Nova rota:** `/manual` (acesso: todos os aprovados)
+
+Estrutura de seções:
+1. Visão Geral — conceitos fundamentais, glossário, arquitetura de perfis
+2. Abrindo um Lote — passo a passo de criação, campos obrigatórios
+3. Movimentação — transferência entre etapas, estorno, regras de saldo
+4. Qualidade — bloqueio, inspeção, aprovação parcial, sucata
+5. Decapagem — fluxo completo, avisos operacionais, situações especiais
+6. Dashboard — KPIs, gráfico de barras, drilldown por PN, timeline de eventos
+7. Administração — edição/exclusão de lotes, gestão de usuários, factory reset
+
+Componentes helpers: `Step`, `Warning`, `Info_`, `Tip`, `Badge_`, `AccordionItem`
+
+**Seção Decapagem atualizada (2026-05-21):**
+- Aviso vermelho proeminente: nunca criar lote com "Decapagem Externa" como etapa inicial
+- Fluxo completo em 6 passos (criação → bloqueio → envio → retorno)
+- Acordeão "Situações Especiais" cobrindo: saldo já em Decapagem Externa, lista de etapas vazia, envio parcial
+
+**Arquivo:** `src/pages/ManualPage.tsx`
+
+---
+
+### 20.14 Estado atual do sistema (2026-05-21)
+
+**Migrations aplicadas no Supabase (001–017):**
+- 001–010: base inicial (tabelas, RLS, RPCs core)
+- 011: is_reversed + reverse_lot_movement
+- 012: estorno parcial + entrada inicial
+- 013: admin edit/delete de lotes
+- 014: decapagem_events, send_to_decapagem, return_from_decapagem
+- 015: factory_reset + SettingsPage
+- 016: correção factory_reset (decapagem_events) + correção admin_delete_rework_lot (FK circular)
+- 017: reparo de lot_stage_balances + fallback nas RPCs de qualidade
+
+**Rotas do sistema:**
+| Rota | Acesso | Descrição |
+|---|---|---|
+| `/dashboard` | todos | KPIs, gráficos, drilldown por PN |
+| `/lots` | todos | Listagem, criação, exportação Excel |
+| `/lot/:id` | todos | Detalhe do lote, timeline, movimentações |
+| `/quality` | quality, admin | Bloqueio, aprovação, sucata, decapagem |
+| `/decapagem` | quality, admin | Aguardando retorno, histórico De/Para |
+| `/settings` | todos (reset: ynascimento@) | Informações do sistema, factory reset |
+| `/manual` | todos | Manual operacional do sistema |
+| `/admin/users` | admin | Aprovação e gestão de usuários |
+
+**Últimos commits:**
+- `249662d` — feat: exportação de relatório Excel completo + atualiza gemini.md
+- `9b49e29` — fix: type state as string to satisfy Select onValueChange
+- `1444424` — feat: editar/excluir lotes (admin) + dashboard interativo com drilldown
+- `baae3ed` — fix: detecta saldo já em Decapagem Externa e exibe mensagem de orientação (QualityPage)
+
+**URL de produção:** `https://retrabalhofabrica.yurifelipen8n.cloud`
+
+**Stack:**
+- React 18 + TypeScript + Vite
+- Supabase (PostgreSQL + Auth + RLS + SECURITY DEFINER RPCs)
+- TanStack Query (react-query) — cache com staleTime, queries condicionais com `enabled`
+- Recharts — PieChart, AreaChart (stepAfter para timeline de eventos)
+- Custom HTML/CSS — gráfico de barras Top Part Numbers
+- xlsx 0.18.5 — exportação Excel no browser (SheetJS)
+- Tailwind CSS + shadcn/ui components
+- Lucide React — ícones
+- Coolify + Hostinger VPS — deploy via GitHub CD (push to main)

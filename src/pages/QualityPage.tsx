@@ -100,6 +100,28 @@ export default function QualityPage() {
     setFromStageId('')
   }
 
+  const formalizeDecapagem = async () => {
+    if (!dialog.lot) return
+    setLoading(true)
+    try {
+      const { error } = await supabase.rpc('formalize_decapagem_from_balance', {
+        p_lot_id: dialog.lot.id,
+        p_quantity: Number(formData.quantity),
+        p_notes: formData.notes || undefined,
+      })
+      if (error) {
+        toast({ variant: 'destructive', title: 'Erro', description: error.message })
+      } else {
+        toast({ title: 'Envio formalizado com sucesso!', description: 'O lote aparecerá na página de Decapagem.' })
+        setDialog(d => ({ ...d, open: false }))
+        queryClient.invalidateQueries({ queryKey: ['quality-blocked'] })
+        navigate('/decapagem')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const executeAction = async () => {
     if (!dialog.lot) return
     setLoading(true)
@@ -307,24 +329,34 @@ export default function QualityPage() {
                 </div>
 
                 {saldoJaNaDecapagem ? (
-                  /* Caso: todo o saldo já está em Decapagem Externa */
-                  <div className="p-3 rounded-md space-y-2" style={{ background: 'rgba(6,182,212,0.06)', border: '1px solid rgba(6,182,212,0.2)' }}>
-                    <p className="text-cyan-400 font-semibold text-xs flex items-center gap-1.5">
-                      <FlaskConical className="h-3.5 w-3.5" />
-                      Lote já está em Decapagem Externa
-                    </p>
-                    <p className="text-muted-foreground text-xs">
-                      Todo o saldo ({formatQuantity(dialog.lot?.quantity_open ?? 0)} pç) já consta na etapa Decapagem Externa.
-                      Para registrar o retorno, acesse a página de Decapagem.
-                    </p>
+                  /* Caso: saldo já em Decapagem Externa sem evento registrado — formalizar */
+                  <div className="p-3 rounded-md space-y-3" style={{ background: 'rgba(6,182,212,0.06)', border: '1px solid rgba(6,182,212,0.2)' }}>
+                    <div>
+                      <p className="text-cyan-400 font-semibold text-xs flex items-center gap-1.5 mb-1">
+                        <FlaskConical className="h-3.5 w-3.5" />
+                        Saldo já está em Decapagem Externa
+                      </p>
+                      <p className="text-muted-foreground text-xs">
+                        O saldo ({formatQuantity(dialog.lot?.quantity_open ?? 0)} pç) já consta em Decapagem Externa mas não há registro formal de envio. Formalize abaixo — o lote ficará visível na página de Decapagem aguardando retorno.
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs">Quantidade *</Label>
+                      <Input type="number" min="1" value={formData.quantity} onChange={e => setFormData(d => ({ ...d, quantity: e.target.value }))} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs">Observações</Label>
+                      <Textarea rows={2} placeholder="Ex: Lote criado direto na etapa Decapagem Externa" value={formData.notes} onChange={e => setFormData(d => ({ ...d, notes: e.target.value }))} />
+                    </div>
                     <Button
                       size="sm"
-                      variant="outline"
-                      className="gap-1.5 text-xs mt-1 text-cyan-400 border-cyan-400/30"
-                      onClick={() => { setDialog(d => ({ ...d, open: false })); navigate('/decapagem') }}
+                      className="gap-1.5 text-xs w-full bg-amber-600 hover:bg-amber-700 text-white"
+                      disabled={loading}
+                      onClick={formalizeDecapagem}
                     >
+                      {loading && <Loader2 className="h-3 w-3 animate-spin" />}
                       <FlaskConical className="h-3 w-3" />
-                      Ir para Decapagem
+                      Formalizar Envio para Decapagem
                     </Button>
                   </div>
                 ) : (

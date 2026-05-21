@@ -359,40 +359,53 @@ function SectionDecapagem() {
         <p className="text-xs text-muted-foreground">O sistema registra automaticamente esta transformação De/Para para rastreabilidade completa.</p>
       </div>
 
+      <div className="flex gap-3 p-4 rounded-lg text-sm" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}>
+        <AlertTriangle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
+        <div className="space-y-1">
+          <p className="font-semibold text-red-300">IMPORTANTE: Nunca crie um lote com "Decapagem Externa" como etapa inicial</p>
+          <p className="text-slate-300">O lote deve ser criado na etapa produtiva real onde o quadro se encontra (ex: <strong>Pintura Pó</strong>, <strong>Usinagem</strong>). O envio à decapagem é feito pela tela de Qualidade — não na abertura do lote. Criar o lote já na etapa Decapagem Externa quebra o fluxo e impede o registro correto do retorno.</p>
+        </div>
+      </div>
+
       <div>
-        <h3 className="font-semibold text-sm mb-3">Como enviar para Decapagem</h3>
+        <h3 className="font-semibold text-sm mb-3">Fluxo completo de decapagem</h3>
         <div className="space-y-0">
-          <Step number={1} title="Acessar a página de Qualidade">
-            <p>O lote precisa estar com status <Badge_ color="amber">Bloqueado</Badge_> ou <Badge_ color="blue">Em Inspeção</Badge_>.</p>
+          <Step number={1} title="Abrir o lote na etapa correta">
+            <p>Na tela <strong>Lotes</strong>, crie o lote com a etapa inicial sendo a etapa produtiva real (ex: Pintura Pó). <strong>Não use "Decapagem Externa" como etapa inicial.</strong></p>
           </Step>
-          <Step number={2} title="Clicar no botão Decapagem">
-            <p>Na lista de lotes bloqueados, clique no botão âmbar <strong>Decapagem</strong> no lote correspondente.</p>
+          <Step number={2} title="Bloquear o lote via Qualidade">
+            <p>Na tela <strong>Qualidade</strong>, bloqueie o lote. O status muda para <Badge_ color="amber">Bloqueado</Badge_>. Lotes só podem ser enviados para decapagem quando bloqueados ou em inspeção.</p>
           </Step>
-          <Step number={3} title="Preencher o formulário">
-            <p>Selecione a etapa de onde o material sairá, a quantidade e adicione observações se necessário.</p>
+          <Step number={3} title="Clicar no botão Decapagem">
+            <p>Com o lote bloqueado, clique no botão âmbar <strong>Decapagem</strong> na tela de Qualidade.</p>
           </Step>
-          <Step number={4} title="Confirmar o envio">
-            <p>O lote muda para <Badge_ color="amber">Em Decapagem</Badge_> e aparece na página de Decapagem, aba "Aguardando Retorno".</p>
+          <Step number={4} title="Preencher o formulário de envio">
+            <p>Selecione a <strong>Etapa de Origem</strong> (onde o saldo do lote está atualmente), a quantidade e observações. O sistema usa esse saldo para movimentar as peças.</p>
+          </Step>
+          <Step number={5} title="Confirmar o envio">
+            <p>O lote muda para <Badge_ color="amber">Em Decapagem</Badge_> e aparece na página de Decapagem, aba <strong>Aguardando Retorno</strong>.</p>
+          </Step>
+          <Step number={6} title="Registrar o retorno (página Decapagem)">
+            <p>No menu lateral, acesse <strong>Decapagem → Aguardando Retorno</strong>. Clique em <strong>Registrar Retorno</strong>, selecione o PN do quadro bruto que retornou e a etapa de entrada.</p>
+            <p>O sistema fecha o lote original e cria um novo lote com o PN bruto, registrando o De/Para no histórico.</p>
           </Step>
         </div>
       </div>
 
       <div>
-        <h3 className="font-semibold text-sm mb-3">Como registrar o retorno</h3>
-        <div className="space-y-0">
-          <Step number={1} title="Acessar menu Decapagem">
-            <p>No menu lateral, clique em <strong>Decapagem</strong>. Os lotes aguardando ficam na aba <strong>Aguardando Retorno</strong>.</p>
-          </Step>
-          <Step number={2} title="Clicar em Registrar Retorno">
-            <p>Clique no botão âmbar <strong>Registrar Retorno</strong> no lote correspondente.</p>
-          </Step>
-          <Step number={3} title="Selecionar o PN do quadro bruto">
-            <p>No campo de busca, localize o Part Number do quadro bruto que retornou. Este será o PN do novo lote.</p>
-          </Step>
-          <Step number={4} title="Escolher etapa de entrada e confirmar">
-            <p>Selecione a etapa onde o quadro bruto vai entrar na produção. Clique em <strong>Confirmar Retorno</strong>.</p>
-            <p>O sistema: fecha o lote original, cria um novo lote com o PN bruto e registra o De/Para no histórico.</p>
-          </Step>
+        <h3 className="font-semibold text-sm mb-3">Situações especiais</h3>
+        <div className="space-y-3">
+          <AccordionItem title='O sistema exibe "Lote já está em Decapagem Externa" ao tentar enviar'>
+            <p>Isso indica que todo o saldo do lote já consta na etapa Decapagem Externa — provavelmente porque o lote foi criado com essa etapa como inicial (erro de operação).</p>
+            <p>Neste caso, o lote <strong>não possui</strong> um evento de decapagem registrado e não aparecerá na aba "Aguardando Retorno". O fluxo correto é criar o lote novamente na etapa produtiva correta e enviar para decapagem via Qualidade.</p>
+          </AccordionItem>
+          <AccordionItem title="Não consigo selecionar a Etapa de Origem (lista vazia ou sem saldo)">
+            <p>Quando o sistema não encontra saldo registrado por etapa para o lote, exibe todas as etapas produtivas ativas com um aviso em âmbar. Selecione a etapa onde o lote fisicamente se encontra.</p>
+            <p>O sistema usará o <code>quantity_open</code> do lote como saldo de partida para o envio. Após o envio, o saldo ficará devidamente registrado para operações futuras.</p>
+          </AccordionItem>
+          <AccordionItem title="Posso enviar quantidade parcial para decapagem?">
+            <p>Sim. Informe a quantidade desejada no campo de quantidade. O saldo restante permanece na etapa de origem e o lote fica com status <Badge_ color="amber">Em Decapagem</Badge_> para a parcela enviada.</p>
+          </AccordionItem>
         </div>
       </div>
 
