@@ -13,6 +13,7 @@ import MoveLotPage from './pages/MoveLotPage'
 import QualityPage from './pages/QualityPage'
 import ScrapPage from './pages/ScrapPage'
 import DecapagemPage from './pages/DecapagemPage'
+import ManualPage from './pages/ManualPage'
 import MaterialsPage from './pages/MaterialsPage'
 import UsersAdminPage from './pages/UsersAdminPage'
 import AuditPage from './pages/AuditPage'
@@ -102,6 +103,7 @@ export default function App() {
           <Route path="/qualidade" element={<QualityRoute><QualityPage /></QualityRoute>} />
           <Route path="/sucata" element={<QualityRoute><ScrapPage /></QualityRoute>} />
           <Route path="/decapagem" element={<QualityRoute><DecapagemPage /></QualityRoute>} />
+          <Route path="/manual" element={<ManualPage />} />
           <Route path="/materiais" element={<MaterialsPage />} />
           <Route path="/admin/usuarios" element={<AdminRoute><UsersAdminPage /></AdminRoute>} />
           <Route path="/auditoria" element={<AdminRoute><AuditPage /></AdminRoute>} />
