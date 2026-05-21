@@ -26,6 +26,7 @@ const LOT_STATUS_LABELS: Record<LotStatus, string> = {
   scrapped: 'Sucateado',
   closed: 'Encerrado',
   cancelled: 'Cancelado',
+  awaiting_decapagem: 'Em Decapagem',
 }
 
 const LOT_STATUS_VARIANTS: Record<LotStatus, 'success' | 'warning' | 'danger' | 'muted' | 'default'> = {
@@ -38,6 +39,7 @@ const LOT_STATUS_VARIANTS: Record<LotStatus, 'success' | 'warning' | 'danger' | 
   scrapped: 'danger',
   closed: 'muted',
   cancelled: 'muted',
+  awaiting_decapagem: 'warning',
 }
 
 const QUALITY_STATUS_LABELS: Record<QualityStatus, string> = {
@@ -48,15 +50,16 @@ const QUALITY_STATUS_LABELS: Record<QualityStatus, string> = {
   rejected: 'Reprovado',
   unblocked: 'Desbloqueado',
   scrap_approved: 'Sucata Aprov.',
+  sent_to_decapagem: 'Em Decapagem',
 }
 
 const ALL_LOT_STATUSES: LotStatus[] = [
   'open', 'in_rework', 'awaiting_quality', 'partially_approved', 'approved',
-  'partially_scrapped', 'scrapped', 'closed', 'cancelled',
+  'partially_scrapped', 'scrapped', 'closed', 'cancelled', 'awaiting_decapagem',
 ]
 
 const ALL_QUALITY_STATUSES: QualityStatus[] = [
-  'pending_block', 'blocked', 'in_inspection', 'approved', 'rejected', 'unblocked', 'scrap_approved',
+  'pending_block', 'blocked', 'in_inspection', 'approved', 'rejected', 'unblocked', 'scrap_approved', 'sent_to_decapagem',
 ]
 
 // ─────────────────────────────────────────────────────────────
