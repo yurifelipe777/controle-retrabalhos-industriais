@@ -42,15 +42,6 @@ const navItems: NavItem[] = [
   { to: '/configuracoes', label: 'Configurações', icon: Settings, adminOnly: true },
 ]
 
-function CaloiMark() {
-  return (
-    <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-7 h-7 shrink-0">
-      <rect width="32" height="32" rx="6" fill="#E8291C" />
-      <text x="16" y="22" textAnchor="middle" fill="white" fontWeight="900" fontSize="11" fontFamily="Inter, Arial, sans-serif" letterSpacing="1">C</text>
-    </svg>
-  )
-}
-
 export default function Sidebar({ open, onToggle }: SidebarProps) {
   const { isAdmin, isQuality } = useAuth()
 
@@ -63,24 +54,21 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
   return (
     <aside
       className={cn(
-        'relative flex flex-col shrink-0 transition-all duration-300',
+        'relative flex flex-col shrink-0 transition-all duration-300 bg-white border-r border-border',
         open ? 'w-56' : 'w-[60px]'
       )}
-      style={{
-        background: 'hsl(225, 42%, 6%)',
-        borderRight: '1px solid rgba(255,255,255,0.05)',
-      }}
     >
       {/* Logo */}
-      <div className={cn(
-        'flex items-center h-14 px-3 gap-3',
-        !open && 'justify-center'
-      )} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <CaloiMark />
+      <div
+        className={cn('flex items-center h-14 px-3 gap-3 caloi-header', !open && 'justify-center')}
+      >
+        <div className="w-7 h-7 rounded-md flex items-center justify-center shrink-0" style={{ background: 'rgba(255,255,255,0.20)' }}>
+          <span className="font-black text-white text-xs">C</span>
+        </div>
         {open && (
           <div className="min-w-0 overflow-hidden">
             <p className="text-xs font-black text-white tracking-[3px] leading-none">CALOI</p>
-            <p className="text-[10px] text-white/30 leading-none mt-1 truncate">Retrabalho Fábrica</p>
+            <p className="text-[10px] text-white/50 leading-none mt-1 truncate">Retrabalho Fábrica</p>
           </div>
         )}
       </div>
@@ -94,7 +82,7 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
           return (
             <div key={item.to}>
               {isNewSection && (
-                <div className="my-2 mx-1 h-px" style={{ background: 'rgba(255,255,255,0.05)' }} />
+                <div className="my-2 mx-1 h-px bg-border" />
               )}
               <NavLink
                 to={item.to}
@@ -103,8 +91,8 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
                   cn(
                     'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-150 group relative',
                     isActive
-                      ? 'text-[#E8291C] font-semibold'
-                      : 'text-white/40 hover:text-white/80',
+                      ? 'text-[#C41414] font-semibold bg-red-50'
+                      : 'text-foreground/60 hover:text-foreground hover:bg-accent',
                     !open && 'justify-center px-2'
                   )
                 }
@@ -112,12 +100,12 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
                 {({ isActive }) => (
                   <>
                     {isActive && (
-                      <div className="absolute inset-0 rounded-lg" style={{
-                        background: 'linear-gradient(90deg, rgba(232,41,28,0.15) 0%, rgba(232,41,28,0.04) 100%)',
-                        borderLeft: '2px solid #E8291C',
-                      }} />
+                      <div
+                        className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full"
+                        style={{ background: '#C41414' }}
+                      />
                     )}
-                    <Icon className={cn('h-4 w-4 shrink-0 relative z-10', isActive ? 'text-[#E8291C]' : 'text-white/35 group-hover:text-white/70')} />
+                    <Icon className={cn('h-4 w-4 shrink-0 relative z-10', isActive ? 'text-[#C41414]' : 'text-foreground/40 group-hover:text-foreground/70')} />
                     {open && <span className="truncate relative z-10">{item.label}</span>}
                   </>
                 )}
@@ -130,22 +118,15 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
       {/* Toggle */}
       <button
         onClick={onToggle}
-        className="absolute -right-3 top-[52px] w-6 h-6 rounded-full flex items-center justify-center transition-colors z-20"
-        style={{
-          background: 'hsl(225, 40%, 10%)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          color: 'rgba(255,255,255,0.3)',
-        }}
-        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.8)' }}
-        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = 'rgba(255,255,255,0.3)' }}
+        className="absolute -right-3 top-[52px] w-6 h-6 rounded-full flex items-center justify-center transition-colors z-20 bg-white border border-border text-muted-foreground hover:text-foreground hover:border-gray-300"
       >
         {open ? <ChevronLeft className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
       </button>
 
       {/* Bottom label */}
       {open && (
-        <div className="px-4 py-3" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-          <p className="text-[10px] text-white/15 font-mono">v1.0 — Caloi Industrial</p>
+        <div className="px-4 py-3 border-t border-border">
+          <p className="text-[10px] text-muted-foreground/50 font-mono">v1.0 — Caloi Industrial</p>
         </div>
       )}
     </aside>

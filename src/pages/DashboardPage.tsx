@@ -58,7 +58,7 @@ function StatCard({
   subtitle?: string
 }) {
   const cfg = {
-    default: { color: '#E8291C', bg: 'rgba(232,41,28,0.1)', border: 'rgba(232,41,28,0.15)' },
+    default: { color: '#C41414', bg: 'rgba(196,20,20,0.09)', border: 'rgba(196,20,20,0.14)' },
     warning: { color: '#F59E0B', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.15)' },
     danger:  { color: '#EF4444', bg: 'rgba(239,68,68,0.1)', border: 'rgba(239,68,68,0.15)' },
     success: { color: '#22C55E', bg: 'rgba(34,197,94,0.1)', border: 'rgba(34,197,94,0.15)' },
@@ -69,9 +69,9 @@ function StatCard({
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <p className="text-xs text-white/40 mb-1.5 font-medium truncate">{title}</p>
+            <p className="text-xs text-muted-foreground mb-1.5 font-medium truncate">{title}</p>
             <p className="text-2xl font-black leading-none" style={{ color: cfg.color }}>{value}</p>
-            {subtitle && <p className="text-xs text-white/30 mt-1.5">{subtitle}</p>}
+            {subtitle && <p className="text-xs text-muted-foreground/70 mt-1.5">{subtitle}</p>}
           </div>
           <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: cfg.bg, border: `1px solid ${cfg.border}` }}>
             <Icon className="h-5 w-5" style={{ color: cfg.color }} />
@@ -90,10 +90,10 @@ function AreaTooltip({ active, payload }: { active?: boolean; payload?: { payloa
   if (!active || !payload?.length) return null
   const d = payload[0].payload
   return (
-    <div className="bg-[hsl(225,40%,10%)] border border-white/10 rounded-lg px-3 py-2 text-xs space-y-0.5">
-      <p className="text-white/50">{d.dateLabel}</p>
-      <p className="text-white/80">{d.label} — {d.lot}</p>
-      <p className="text-emerald-400 font-semibold">{formatQuantity(d.qty_in_process)} pç em processo</p>
+    <div className="bg-white border border-border rounded-lg px-3 py-2 text-xs space-y-0.5 shadow-md">
+      <p className="text-muted-foreground">{d.dateLabel}</p>
+      <p className="text-foreground font-medium">{d.label} — {d.lot}</p>
+      <p className="text-emerald-600 font-semibold">{formatQuantity(d.qty_in_process)} pç em processo</p>
     </div>
   )
 }
@@ -393,34 +393,34 @@ export default function DashboardPage() {
                   return (
                     <div
                       key={index}
-                      className="rounded-lg px-3 py-2 cursor-pointer transition-all duration-150 hover:bg-white/[0.03]"
+                      className="rounded-lg px-3 py-2 cursor-pointer transition-all duration-150 hover:bg-accent/50"
                       style={{
-                        background: isSelected ? 'rgba(232,41,28,0.07)' : undefined,
-                        opacity: isDimmed ? 0.28 : 1,
+                        background: isSelected ? 'rgba(196,20,20,0.06)' : undefined,
+                        opacity: isDimmed ? 0.30 : 1,
                       }}
                       onClick={() => handleBarClick(entry)}
                     >
                       <div className="flex items-baseline gap-2 mb-1.5">
                         <span
                           className="font-mono text-[11px] font-semibold shrink-0 transition-colors"
-                          style={{ color: isSelected ? '#E8291C' : 'rgba(255,255,255,0.78)' }}
+                          style={{ color: isSelected ? '#C41414' : 'hsl(220, 28%, 18%)' }}
                         >
                           {entry.label}
                         </span>
-                        <span className="text-[9.5px] text-white/30 truncate flex-1">{entry.descricao}</span>
+                        <span className="text-[9.5px] text-muted-foreground/60 truncate flex-1">{entry.descricao}</span>
                         <span
                           className="text-[11px] font-bold tabular-nums shrink-0 transition-colors"
-                          style={{ color: isSelected ? '#E8291C' : 'rgba(255,255,255,0.45)' }}
+                          style={{ color: isSelected ? '#C41414' : 'hsl(220, 12%, 46%)' }}
                         >
                           {formatQuantity(entry.qty)} pç
                         </span>
                       </div>
-                      <div className="h-[4px] rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                      <div className="h-[4px] rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.07)' }}>
                         <div
                           className="h-full rounded-full"
                           style={{
                             width: `${pct}%`,
-                            background: isSelected ? 'linear-gradient(90deg, #c41e14, #ff4a3d)' : '#E8291C',
+                            background: isSelected ? 'linear-gradient(90deg, #8B0E0E, #C41414)' : '#C41414',
                             transition: 'width 0.5s ease, background 0.2s ease',
                           }}
                         />
@@ -456,7 +456,7 @@ export default function DashboardPage() {
                   ))}
                 </Pie>
                 <Tooltip
-                  contentStyle={{ backgroundColor: 'hsl(225, 40%, 10%)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px' }}
+                  contentStyle={{ backgroundColor: '#FFFFFF', border: '1px solid hsl(220, 20%, 90%)', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                 />
               </PieChart>
             </ResponsiveContainer>
@@ -484,13 +484,13 @@ export default function DashboardPage() {
                 </p>
                 <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
                   <span>
-                    <span className="text-white/60 font-medium">{drilldownLots.length}</span> lote{drilldownLots.length !== 1 ? 's' : ''}
+                    <span className="text-foreground/70 font-medium">{drilldownLots.length}</span> lote{drilldownLots.length !== 1 ? 's' : ''}
                   </span>
                   <span>
                     <span className="text-primary font-medium">{formatQuantity(drilldownQtyOpen)}</span> pç abertas
                   </span>
                   <span>
-                    Inicial: <span className="text-white/60">{formatQuantity(drilldownQtyTotal)}</span> pç
+                    Inicial: <span className="text-foreground/70">{formatQuantity(drilldownQtyTotal)}</span> pç
                   </span>
                   <span>
                     Aging médio: <span className={drilldownAvgAging > 10 ? 'text-red-400' : drilldownAvgAging > 5 ? 'text-amber-400' : 'text-green-400'}>
@@ -518,27 +518,27 @@ export default function DashboardPage() {
                   <AreaChart data={timelineData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
                     <defs>
                       <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#E8291C" stopOpacity={0.25} />
-                        <stop offset="95%" stopColor="#E8291C" stopOpacity={0.02} />
+                        <stop offset="5%" stopColor="#C41414" stopOpacity={0.20} />
+                        <stop offset="95%" stopColor="#C41414" stopOpacity={0.02} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" />
                     <XAxis
                       dataKey="dateLabel"
-                      tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 9 }}
+                      tick={{ fill: 'hsl(220, 12%, 55%)', fontSize: 9 }}
                       interval="preserveStartEnd"
                     />
-                    <YAxis tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} width={35} />
+                    <YAxis tick={{ fill: 'hsl(220, 12%, 55%)', fontSize: 10 }} width={35} />
                     <Tooltip content={<AreaTooltip />} />
-                    <ReferenceLine y={0} stroke="rgba(255,255,255,0.1)" />
+                    <ReferenceLine y={0} stroke="rgba(0,0,0,0.08)" />
                     <Area
                       type="stepAfter"
                       dataKey="qty_in_process"
                       name="Em Processo"
-                      stroke="#E8291C"
+                      stroke="#C41414"
                       fill="url(#areaGrad)"
                       strokeWidth={2}
-                      dot={timelineData.length <= 20 ? { fill: '#E8291C', r: 3, strokeWidth: 0 } : false}
+                      dot={timelineData.length <= 20 ? { fill: '#C41414', r: 3, strokeWidth: 0 } : false}
                     />
                   </AreaChart>
                 </ResponsiveContainer>

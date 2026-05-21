@@ -242,7 +242,7 @@ export default function DecapagemPage() {
                         <Badge variant="warning" className="text-xs">{dias}d em Decapagem</Badge>
                       </div>
                       <div className="flex items-center gap-1 text-sm">
-                        <span className="font-medium text-red-300">{origPn?.part_number}</span>
+                        <span className="font-medium text-red-600">{origPn?.part_number}</span>
                         <span className="text-muted-foreground text-xs">— {origPn?.description}</span>
                       </div>
                       <p className="text-xs text-muted-foreground">
@@ -312,10 +312,10 @@ export default function DecapagemPage() {
                     </div>
 
                     {/* De/Para */}
-                    <div className="flex items-center gap-3 p-3 rounded-md" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                    <div className="flex items-center gap-3 p-3 rounded-md" style={{ background: 'hsl(220, 18%, 96%)' }}>
                       <div className="text-center min-w-0 flex-1">
                         <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">De (Pintado)</p>
-                        <p className="text-sm font-medium text-red-300 truncate">{origPn?.part_number}</p>
+                        <p className="text-sm font-medium text-red-600 truncate">{origPn?.part_number}</p>
                         <p className="text-xs text-muted-foreground truncate">{origPn?.description}</p>
                       </div>
                       <ArrowRight className="h-5 w-5 text-amber-400 shrink-0" />
@@ -323,7 +323,7 @@ export default function DecapagemPage() {
                         <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Para (Bruto)</p>
                         {retPn ? (
                           <>
-                            <p className="text-sm font-medium text-emerald-300 truncate">{retPn.part_number}</p>
+                            <p className="text-sm font-medium text-emerald-600 truncate">{retPn.part_number}</p>
                             <p className="text-xs text-muted-foreground truncate">{retPn.description}</p>
                           </>
                         ) : (
@@ -366,11 +366,11 @@ export default function DecapagemPage() {
             return (
               <div className="space-y-4">
                 {/* Resumo do envio */}
-                <div className="p-3 rounded-md space-y-1" style={{ background: 'rgba(255,255,255,0.04)' }}>
+                <div className="p-3 rounded-md space-y-1" style={{ background: 'hsl(220, 18%, 96%)' }}>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider">Lote de origem</p>
                   <p className="font-mono text-primary text-sm">{lot?.lot_code}</p>
                   <div className="flex items-center gap-2 text-sm mt-1">
-                    <span className="text-red-300 font-medium">{origPn?.part_number}</span>
+                    <span className="text-red-600 font-medium">{origPn?.part_number}</span>
                     <ArrowRight className="h-4 w-4 text-amber-400" />
                     <span className="text-muted-foreground italic">PN bruto a selecionar</span>
                   </div>
@@ -383,7 +383,7 @@ export default function DecapagemPage() {
                   {selectedPn ? (
                     <div className="flex items-center justify-between p-2 rounded-md border border-emerald-500/40 bg-emerald-500/5">
                       <div>
-                        <p className="text-sm font-medium text-emerald-300">{selectedPn.part_number}</p>
+                        <p className="text-sm font-medium text-emerald-600">{selectedPn.part_number}</p>
                         <p className="text-xs text-muted-foreground">{selectedPn.description}</p>
                       </div>
                       <Button

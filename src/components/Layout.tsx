@@ -7,7 +7,7 @@ export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: 'hsl(224, 43%, 5%)' }}>
+    <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
       <div className="flex flex-col flex-1 overflow-hidden">
         <Header onMenuToggle={() => setSidebarOpen(!sidebarOpen)} />
