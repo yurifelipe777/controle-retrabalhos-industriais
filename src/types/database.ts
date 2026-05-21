@@ -529,6 +529,14 @@ export interface Database {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
+      formalize_decapagem_from_balance: {
+        Args: {
+          p_lot_id: string
+          p_quantity: number
+          p_notes?: string
+        }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never
