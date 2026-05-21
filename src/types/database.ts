@@ -525,6 +525,10 @@ export interface Database {
         }
         Returns: Array<{ lot_id: string; lot_code: string }>
       }
+      factory_reset: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
