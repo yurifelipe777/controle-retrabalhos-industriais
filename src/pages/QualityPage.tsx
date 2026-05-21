@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { toast } from '../components/ui/use-toast'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
@@ -11,16 +11,17 @@ import { Label } from '../components/ui/label'
 import { Textarea } from '../components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog'
-import { ShieldCheck, Lock, CheckCircle, XCircle, AlertTriangle, Loader2 } from 'lucide-react'
+import { ShieldCheck, Lock, CheckCircle, XCircle, AlertTriangle, Loader2, FlaskConical } from 'lucide-react'
 import { calcAgingDays, formatDate, formatQuantity } from '../lib/utils'
 import type { ReworkLot, LotStageBalance } from '../types'
 
-type ActionType = 'block' | 'approve' | 'reject' | 'scrap'
+type ActionType = 'block' | 'approve' | 'reject' | 'scrap' | 'decapagem'
 
 export default function QualityPage() {
   const [searchParams] = useSearchParams()
   const preselectedLot = searchParams.get('lot')
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
   const [dialog, setDialog] = useState<{ open: boolean; action: ActionType; lot: ReworkLot | null }>({
     open: false, action: 'block', lot: null
@@ -56,13 +57,27 @@ export default function QualityPage() {
 
   const { data: balances = [] } = useQuery({
     queryKey: ['quality-balances', dialog.lot?.id],
-    enabled: !!dialog.lot?.id && dialog.action !== 'block',
+    enabled: !!dialog.lot?.id && dialog.action !== 'block' && dialog.action !== 'decapagem',
     queryFn: async () => {
       const { data } = await supabase
         .from('lot_stage_balances')
         .select(`*, stage:process_stages(id, name, sequence)`)
         .eq('lot_id', dialog.lot!.id)
         .gt('balance_quantity', 0)
+      return (data ?? []) as unknown as LotStageBalance[]
+    },
+  })
+
+  const { data: decapagemBalances = [] } = useQuery({
+    queryKey: ['quality-decapagem-balances', dialog.lot?.id],
+    enabled: !!dialog.lot?.id && dialog.action === 'decapagem',
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('lot_stage_balances')
+        .select(`*, stage:process_stages(id, name, sequence)`)
+        .eq('lot_id', dialog.lot!.id)
+        .gt('balance_quantity', 0)
+        .not('stage.name', 'eq', 'Decapagem Externa')
       return (data ?? []) as unknown as LotStageBalance[]
     },
   })
@@ -106,6 +121,15 @@ export default function QualityPage() {
           p_reason: formData.reason,
         })
         error = result.error
+      } else if (dialog.action === 'decapagem') {
+        if (!fromStageId) { toast({ variant: 'destructive', title: 'Selecione a etapa de origem' }); setLoading(false); return }
+        const result = await supabase.rpc('send_to_decapagem', {
+          p_lot_id: dialog.lot.id,
+          p_from_stage_id: fromStageId,
+          p_quantity: Number(formData.quantity),
+          p_notes: formData.notes || undefined,
+        })
+        error = result.error
       }
 
       if (error) {
@@ -115,6 +139,9 @@ export default function QualityPage() {
         setDialog({ open: false, action: 'block', lot: null })
         queryClient.invalidateQueries({ queryKey: ['quality-pending'] })
         queryClient.invalidateQueries({ queryKey: ['quality-blocked'] })
+        if (dialog.action === 'decapagem') {
+          navigate('/decapagem')
+        }
       }
     } finally {
       setLoading(false)
@@ -126,6 +153,7 @@ export default function QualityPage() {
     approve: 'Aprovar Quantidade',
     reject: 'Reprovar Quantidade',
     scrap: 'Enviar para Sucata',
+    decapagem: 'Enviar para Decapagem Externa',
   }
 
   return (
@@ -217,6 +245,10 @@ export default function QualityPage() {
                           <XCircle className="h-3 w-3" />
                           Sucata
                         </Button>
+                        <Button size="sm" variant="outline" onClick={() => openDialog('decapagem', lot)} className="gap-1 text-amber-400 border-amber-400/30">
+                          <FlaskConical className="h-3 w-3" />
+                          Decapagem
+                        </Button>
                       </div>
                     </div>
                   </CardContent>
@@ -251,6 +283,35 @@ export default function QualityPage() {
                 <div className="space-y-2">
                   <Label>Observações</Label>
                   <Textarea rows={2} value={formData.notes} onChange={e => setFormData(d => ({ ...d, notes: e.target.value }))} />
+                </div>
+              </>
+            )}
+
+            {dialog.action === 'decapagem' && (
+              <>
+                <div className="p-3 rounded-md text-sm" style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)' }}>
+                  <p className="text-amber-400 font-medium text-xs mb-1">Processo Externo</p>
+                  <p className="text-muted-foreground text-xs">O quadro será enviado para tratamento químico e retornará com um Part Number de quadro bruto diferente.</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Etapa de Origem *</Label>
+                  <Select onValueChange={setFromStageId}>
+                    <SelectTrigger><SelectValue placeholder="Selecione a etapa..." /></SelectTrigger>
+                    <SelectContent>
+                      {decapagemBalances.map(b => {
+                        const stage = b.stage as { id: string; name: string } | undefined
+                        return <SelectItem key={b.id} value={stage?.id ?? ''}>{stage?.name} — {formatQuantity(b.balance_quantity)} pç</SelectItem>
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Quantidade *</Label>
+                  <Input type="number" min="1" value={formData.quantity} onChange={e => setFormData(d => ({ ...d, quantity: e.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Observações</Label>
+                  <Textarea rows={2} placeholder="Ex: Quadro com cor errada — referência NC-2026-005" value={formData.notes} onChange={e => setFormData(d => ({ ...d, notes: e.target.value }))} />
                 </div>
               </>
             )}
@@ -295,9 +356,14 @@ export default function QualityPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialog(d => ({ ...d, open: false }))}>Cancelar</Button>
-            <Button onClick={executeAction} disabled={loading} variant={dialog.action === 'scrap' ? 'destructive' : 'default'}>
+            <Button
+              onClick={executeAction}
+              disabled={loading}
+              variant={dialog.action === 'scrap' ? 'destructive' : 'default'}
+              className={dialog.action === 'decapagem' ? 'bg-amber-600 hover:bg-amber-700 text-white' : ''}
+            >
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Confirmar
+              {dialog.action === 'decapagem' ? 'Enviar para Decapagem' : 'Confirmar'}
             </Button>
           </DialogFooter>
         </DialogContent>

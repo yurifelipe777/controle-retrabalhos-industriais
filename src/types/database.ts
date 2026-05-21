@@ -136,6 +136,7 @@ export interface Database {
           created_by: string | null
           created_at: string
           updated_at: string
+          originated_from_decapagem_id: string | null
         }
         Insert: {
           id?: string
@@ -242,6 +243,50 @@ export interface Database {
         }
         Update: {
           notes?: string | null
+        }
+        Relationships: []
+      }
+      decapagem_events: {
+        Row: {
+          id: string
+          lot_id: string
+          quantity: number
+          from_stage_id: string
+          original_part_number_id: string
+          returned_part_number_id: string | null
+          status: string
+          dispatched_at: string
+          dispatched_by: string | null
+          returned_at: string | null
+          returned_by: string | null
+          returned_lot_id: string | null
+          notes: string | null
+          return_notes: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          lot_id: string
+          quantity: number
+          from_stage_id: string
+          original_part_number_id: string
+          returned_part_number_id?: string | null
+          status?: string
+          dispatched_at?: string
+          dispatched_by?: string | null
+          returned_at?: string | null
+          returned_by?: string | null
+          returned_lot_id?: string | null
+          notes?: string | null
+          return_notes?: string | null
+        }
+        Update: {
+          returned_part_number_id?: string | null
+          status?: string
+          returned_at?: string | null
+          returned_by?: string | null
+          returned_lot_id?: string | null
+          return_notes?: string | null
         }
         Relationships: []
       }
@@ -460,6 +505,25 @@ export interface Database {
       admin_delete_rework_lot: {
         Args: { p_lot_id: string }
         Returns: undefined
+      }
+      send_to_decapagem: {
+        Args: {
+          p_lot_id: string
+          p_from_stage_id: string
+          p_quantity: number
+          p_notes?: string
+        }
+        Returns: string
+      }
+      register_decapagem_return: {
+        Args: {
+          p_decapagem_event_id: string
+          p_returned_pn_id: string
+          p_initial_stage_id: string
+          p_defect_description?: string
+          p_return_notes?: string
+        }
+        Returns: Array<{ lot_id: string; lot_code: string }>
       }
     }
     Enums: {

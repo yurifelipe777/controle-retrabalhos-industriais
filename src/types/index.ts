@@ -25,6 +25,7 @@ export type LotStatus =
   | 'scrapped'
   | 'closed'
   | 'cancelled'
+  | 'awaiting_decapagem'
 
 export type QualityStatus =
   | 'pending_block'
@@ -34,6 +35,7 @@ export type QualityStatus =
   | 'rejected'
   | 'unblocked'
   | 'scrap_approved'
+  | 'sent_to_decapagem'
 
 export interface ProductMaster {
   id: string
@@ -81,6 +83,7 @@ export interface ReworkLot {
   created_by: string | null
   created_at: string
   updated_at: string
+  originated_from_decapagem_id: string | null
   product_master?: ProductMaster
   defect_type?: DefectType
   creator?: Profile
@@ -113,7 +116,33 @@ export interface LotStageBalance {
   stage?: ProcessStage
 }
 
-export type QualityEventType = 'block' | 'unblock' | 'inspection' | 'approve' | 'reject' | 'send_to_scrap'
+export type QualityEventType = 'block' | 'unblock' | 'inspection' | 'approve' | 'reject' | 'send_to_scrap' | 'send_to_decapagem' | 'return_from_decapagem'
+
+export type DecapagemStatus = 'dispatched' | 'returned' | 'cancelled'
+
+export interface DecapagemEvent {
+  id: string
+  lot_id: string
+  quantity: number
+  from_stage_id: string
+  original_part_number_id: string
+  returned_part_number_id: string | null
+  status: DecapagemStatus
+  dispatched_at: string
+  dispatched_by: string | null
+  returned_at: string | null
+  returned_by: string | null
+  returned_lot_id: string | null
+  notes: string | null
+  return_notes: string | null
+  created_at: string
+  lot?: ReworkLot
+  original_pn?: ProductMaster
+  returned_pn?: ProductMaster
+  returned_lot?: ReworkLot
+  dispatcher?: Profile
+  returner?: Profile
+}
 
 export interface QualityEvent {
   id: string
