@@ -89,6 +89,11 @@ export default function QualityPage() {
   )
   const fallbackStages = allStages.filter(s => s.name !== 'Decapagem Externa')
 
+  // Caso especial: saldo já está inteiramente em Decapagem Externa (lote já foi enviado)
+  const saldoJaNaDecapagem = dialog.action === 'decapagem' && !balancesFetching && balances.length > 0 && decapagemBalances.length === 0
+  // Caso de dados inconsistentes: sem nenhum saldo por etapa registrado
+  const semSaldoPorEtapa = !balancesFetching && balances.length === 0
+
   const openDialog = (action: ActionType, lot: ReworkLot) => {
     setDialog({ open: true, action, lot })
     setFormData({ quantity: String(lot.quantity_open), quality_document: lot.quality_block_number ?? '', notes: '', reason: '' })
@@ -300,36 +305,63 @@ export default function QualityPage() {
                   <p className="text-amber-400 font-medium text-xs mb-1">Processo Externo</p>
                   <p className="text-muted-foreground text-xs">O quadro será enviado para tratamento químico e retornará com um Part Number de quadro bruto diferente.</p>
                 </div>
-                <div className="space-y-2">
-                  <Label>Etapa de Origem *</Label>
-                  <Select onValueChange={setFromStageId} disabled={balancesFetching}>
-                    <SelectTrigger>
-                      <SelectValue placeholder={balancesFetching ? 'Carregando etapas…' : 'Selecione a etapa...'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {decapagemBalances.length > 0
-                        ? decapagemBalances.map(b => {
-                            const stage = b.stage as { id: string; name: string } | undefined
-                            return <SelectItem key={b.id} value={stage?.id ?? ''}>{stage?.name} — {formatQuantity(b.balance_quantity)} pç</SelectItem>
-                          })
-                        : fallbackStages.map(s => (
-                            <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                          ))
-                      }
-                    </SelectContent>
-                  </Select>
-                  {!balancesFetching && decapagemBalances.length === 0 && fallbackStages.length > 0 && (
-                    <p className="text-xs text-amber-400/70">Saldo por etapa indisponível — indique em qual etapa o lote se encontra.</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label>Quantidade *</Label>
-                  <Input type="number" min="1" value={formData.quantity} onChange={e => setFormData(d => ({ ...d, quantity: e.target.value }))} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Observações</Label>
-                  <Textarea rows={2} placeholder="Ex: Quadro com cor errada — referência NC-2026-005" value={formData.notes} onChange={e => setFormData(d => ({ ...d, notes: e.target.value }))} />
-                </div>
+
+                {saldoJaNaDecapagem ? (
+                  /* Caso: todo o saldo já está em Decapagem Externa */
+                  <div className="p-3 rounded-md space-y-2" style={{ background: 'rgba(6,182,212,0.06)', border: '1px solid rgba(6,182,212,0.2)' }}>
+                    <p className="text-cyan-400 font-semibold text-xs flex items-center gap-1.5">
+                      <FlaskConical className="h-3.5 w-3.5" />
+                      Lote já está em Decapagem Externa
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      Todo o saldo ({formatQuantity(dialog.lot?.quantity_open ?? 0)} pç) já consta na etapa Decapagem Externa.
+                      Para registrar o retorno, acesse a página de Decapagem.
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 text-xs mt-1 text-cyan-400 border-cyan-400/30"
+                      onClick={() => { setDialog(d => ({ ...d, open: false })); navigate('/decapagem') }}
+                    >
+                      <FlaskConical className="h-3 w-3" />
+                      Ir para Decapagem
+                    </Button>
+                  </div>
+                ) : (
+                  /* Caso normal: formulário de envio */
+                  <>
+                    <div className="space-y-2">
+                      <Label>Etapa de Origem *</Label>
+                      <Select onValueChange={setFromStageId} disabled={balancesFetching}>
+                        <SelectTrigger>
+                          <SelectValue placeholder={balancesFetching ? 'Carregando etapas…' : 'Selecione a etapa...'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {decapagemBalances.length > 0
+                            ? decapagemBalances.map(b => {
+                                const stage = b.stage as { id: string; name: string } | undefined
+                                return <SelectItem key={b.id} value={stage?.id ?? ''}>{stage?.name} — {formatQuantity(b.balance_quantity)} pç</SelectItem>
+                              })
+                            : fallbackStages.map(s => (
+                                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                              ))
+                          }
+                        </SelectContent>
+                      </Select>
+                      {semSaldoPorEtapa && fallbackStages.length > 0 && (
+                        <p className="text-xs text-amber-400/70">Saldo por etapa indisponível — indique em qual etapa o lote se encontra.</p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Quantidade *</Label>
+                      <Input type="number" min="1" value={formData.quantity} onChange={e => setFormData(d => ({ ...d, quantity: e.target.value }))} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Observações</Label>
+                      <Textarea rows={2} placeholder="Ex: Quadro com cor errada — referência NC-2026-005" value={formData.notes} onChange={e => setFormData(d => ({ ...d, notes: e.target.value }))} />
+                    </div>
+                  </>
+                )}
               </>
             )}
 
@@ -383,15 +415,17 @@ export default function QualityPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialog(d => ({ ...d, open: false }))}>Cancelar</Button>
-            <Button
-              onClick={executeAction}
-              disabled={loading}
-              variant={dialog.action === 'scrap' ? 'destructive' : 'default'}
-              className={dialog.action === 'decapagem' ? 'bg-amber-600 hover:bg-amber-700 text-white' : ''}
-            >
-              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {dialog.action === 'decapagem' ? 'Enviar para Decapagem' : 'Confirmar'}
-            </Button>
+            {!saldoJaNaDecapagem && (
+              <Button
+                onClick={executeAction}
+                disabled={loading}
+                variant={dialog.action === 'scrap' ? 'destructive' : 'default'}
+                className={dialog.action === 'decapagem' ? 'bg-amber-600 hover:bg-amber-700 text-white' : ''}
+              >
+                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {dialog.action === 'decapagem' ? 'Enviar para Decapagem' : 'Confirmar'}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
