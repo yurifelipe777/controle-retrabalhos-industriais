@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import { calcAgingDays, formatDate, formatDateTime, formatQuantity, formatPercent } from '../lib/utils'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, AreaChart, Area, ReferenceLine,
 } from 'recharts'
 import type { ReworkLot, LotMovement } from '../types'
@@ -85,17 +85,6 @@ function StatCard({
 // ─────────────────────────────────────────────
 // Tooltip customizado do gráfico de barras
 // ─────────────────────────────────────────────
-function BarTooltip({ active, payload }: { active?: boolean; payload?: { value: number; payload: { label: string; qty: number; descricao: string } }[] }) {
-  if (!active || !payload?.length) return null
-  const entry = payload[0].payload
-  return (
-    <div className="bg-[hsl(225,40%,10%)] border border-white/10 rounded-lg px-3 py-2 text-xs max-w-[220px]">
-      <p className="font-mono font-semibold text-white/80 mb-0.5">{entry.label}</p>
-      {entry.descricao && <p className="text-white/40 mb-1 leading-tight">{entry.descricao}</p>}
-      <p style={{ color: '#E8291C' }}>{formatQuantity(payload[0].value)} pç abertas</p>
-    </div>
-  )
-}
 
 function AreaTooltip({ active, payload }: { active?: boolean; payload?: { payload: { label: string; dateLabel: string; lot: string; qty: number; qty_in_process: number } }[] }) {
   if (!active || !payload?.length) return null
@@ -219,19 +208,6 @@ export default function DashboardPage() {
 
   const decapagemLots = lots.filter(l => l.current_status === 'awaiting_decapagem')
   const decapagemQty = decapagemLots.reduce((s, l) => s + l.quantity_open, 0)
-
-  // Custom Y-axis tick showing PN + truncated description
-  const BarYTick = useCallback(({ x, y, payload }: { x: number; y: number; payload: { value: string } }) => {
-    const entry = topPNs.find(p => p.label === payload.value)
-    const desc = entry?.descricao ?? ''
-    const shortDesc = desc.length > 26 ? desc.slice(0, 26) + '…' : desc
-    return (
-      <g transform={`translate(${x},${y})`}>
-        <text x={-5} y={-4} textAnchor="end" fontSize={10} fill="rgba(255,255,255,0.65)" fontFamily="'Courier New', monospace">{payload.value}</text>
-        <text x={-5} y={8} textAnchor="end" fontSize={8} fill="rgba(255,255,255,0.35)">{shortDesc}</text>
-      </g>
-    )
-  }, [topPNs])
 
   // ── Timeline data (drilldown) ─────────────
   const lotCodeMap = useMemo(
@@ -409,28 +385,50 @@ export default function DashboardPage() {
             {topPNs.length === 0 ? (
               <p className="text-center text-muted-foreground text-sm py-8">Nenhum dado disponível</p>
             ) : (
-              <ResponsiveContainer width="100%" height={320}>
-                <BarChart data={topPNs} layout="vertical" margin={{ left: 0, right: 8, top: 4, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                  <XAxis type="number" tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 11 }} />
-                  <YAxis dataKey="label" type="category" tick={BarYTick} width={170} />
-                  <Tooltip content={<BarTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
-                  <Bar dataKey="qty" name="Qtd Aberta" radius={[0, 4, 4, 0]} cursor="pointer" onClick={handleBarClick}>
-                    {topPNs.map((entry, index) => (
-                      <Cell
-                        key={index}
-                        fill={
-                          selectedPN === null
-                            ? '#E8291C'
-                            : entry.label === selectedPN
-                            ? '#E8291C'
-                            : 'rgba(232,41,28,0.25)'
-                        }
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              <div className="space-y-0.5 mt-1">
+                {topPNs.map((entry, index) => {
+                  const pct = topPNs[0]?.qty > 0 ? (entry.qty / topPNs[0].qty) * 100 : 0
+                  const isSelected = selectedPN === entry.label
+                  const isDimmed = selectedPN !== null && !isSelected
+                  return (
+                    <div
+                      key={index}
+                      className="rounded-lg px-3 py-2 cursor-pointer transition-all duration-150 hover:bg-white/[0.03]"
+                      style={{
+                        background: isSelected ? 'rgba(232,41,28,0.07)' : undefined,
+                        opacity: isDimmed ? 0.28 : 1,
+                      }}
+                      onClick={() => handleBarClick(entry)}
+                    >
+                      <div className="flex items-baseline gap-2 mb-1.5">
+                        <span
+                          className="font-mono text-[11px] font-semibold shrink-0 transition-colors"
+                          style={{ color: isSelected ? '#E8291C' : 'rgba(255,255,255,0.78)' }}
+                        >
+                          {entry.label}
+                        </span>
+                        <span className="text-[9.5px] text-white/30 truncate flex-1">{entry.descricao}</span>
+                        <span
+                          className="text-[11px] font-bold tabular-nums shrink-0 transition-colors"
+                          style={{ color: isSelected ? '#E8291C' : 'rgba(255,255,255,0.45)' }}
+                        >
+                          {formatQuantity(entry.qty)} pç
+                        </span>
+                      </div>
+                      <div className="h-[4px] rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${pct}%`,
+                            background: isSelected ? 'linear-gradient(90deg, #c41e14, #ff4a3d)' : '#E8291C',
+                            transition: 'width 0.5s ease, background 0.2s ease',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             )}
           </CardContent>
         </Card>
