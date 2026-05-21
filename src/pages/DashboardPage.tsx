@@ -5,9 +5,10 @@ import { supabase } from '../lib/supabase'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge'
 import { Button } from '../components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog'
 import {
   AlertTriangle, Package, Clock, CheckCircle, XCircle, Trash2,
-  TrendingUp, AlertCircle, X, Eye, ChevronRight, FlaskConical,
+  TrendingUp, AlertCircle, X, Eye, ChevronRight, FlaskConical, ExternalLink,
 } from 'lucide-react'
 import { calcAgingDays, formatDate, formatDateTime, formatQuantity, formatPercent } from '../lib/utils'
 import {
@@ -45,17 +46,20 @@ const EVENT_LABELS: Record<string, string> = {
   approve: 'Aprovado QLD', reject: 'Reprovado', send_to_scrap: 'Sucata',
 }
 
+type DrillCard = 'rework' | 'lots' | 'pending_block' | 'aging' | 'decapagem' | null
+
 // ─────────────────────────────────────────────
 // Stat Card
 // ─────────────────────────────────────────────
 function StatCard({
-  title, value, icon: Icon, variant = 'default', subtitle,
+  title, value, icon: Icon, variant = 'default', subtitle, onClick,
 }: {
   title: string
   value: string | number
   icon: React.ElementType
   variant?: 'default' | 'warning' | 'danger' | 'success'
   subtitle?: string
+  onClick?: () => void
 }) {
   const cfg = {
     default: { color: '#C41414', bg: 'rgba(196,20,20,0.09)', border: 'rgba(196,20,20,0.14)' },
@@ -65,7 +69,10 @@ function StatCard({
   }[variant]
 
   return (
-    <Card className="stat-card-hover cursor-default">
+    <Card
+      className={`stat-card-hover ${onClick ? 'cursor-pointer hover:shadow-md hover:border-primary/30 transition-shadow' : 'cursor-default'}`}
+      onClick={onClick}
+    >
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
@@ -73,8 +80,11 @@ function StatCard({
             <p className="text-2xl font-black leading-none" style={{ color: cfg.color }}>{value}</p>
             {subtitle && <p className="text-xs text-muted-foreground/70 mt-1.5">{subtitle}</p>}
           </div>
-          <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: cfg.bg, border: `1px solid ${cfg.border}` }}>
-            <Icon className="h-5 w-5" style={{ color: cfg.color }} />
+          <div className="flex flex-col items-end gap-1.5 shrink-0">
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: cfg.bg, border: `1px solid ${cfg.border}` }}>
+              <Icon className="h-5 w-5" style={{ color: cfg.color }} />
+            </div>
+            {onClick && <span className="text-[9px] text-muted-foreground/50 font-medium">ver detalhes</span>}
           </div>
         </div>
       </CardContent>
@@ -103,6 +113,7 @@ function AreaTooltip({ active, payload }: { active?: boolean; payload?: { payloa
 // ─────────────────────────────────────────────
 export default function DashboardPage() {
   const [selectedPN, setSelectedPN] = useState<string | null>(null)
+  const [drillCard, setDrillCard] = useState<DrillCard>(null)
 
   // ── Queries base ──────────────────────────
   const { data: lots = [], isLoading } = useQuery({
@@ -176,12 +187,35 @@ export default function DashboardPage() {
   })
 
   // ── Computações base ──────────────────────
-  const openLots = lots.length
-  const totalOpenQty = lots.reduce((s, l) => s + l.quantity_open, 0)
-  const pendingBlock = lots.filter(l => l.quality_status === 'pending_block').length
-  const pendingBlockQty = lots.filter(l => l.quality_status === 'pending_block').reduce((s, l) => s + l.quantity_open, 0)
+  const decapagemLots = lots.filter(l => l.current_status === 'awaiting_decapagem')
+  const decapagemQty = decapagemLots.reduce((s, l) => s + l.quantity_open, 0)
+  const reworkLots = lots.filter(l => l.current_status !== 'awaiting_decapagem')
+
+  const openLots = reworkLots.length
+  const totalOpenQty = reworkLots.reduce((s, l) => s + l.quantity_open, 0)
+  const pendingBlock = reworkLots.filter(l => l.quality_status === 'pending_block').length
+  const pendingBlockQty = reworkLots.filter(l => l.quality_status === 'pending_block').reduce((s, l) => s + l.quantity_open, 0)
   const totalInitial = lots.reduce((s, l) => s + l.quantity_initial, 0) + (approvedTotal ?? 0) + (scrapTotal ?? 0)
   const scrapRate = totalInitial > 0 ? ((scrapTotal ?? 0) / totalInitial) * 100 : 0
+
+  // ── Drilldown por card ────────────────────
+  const cardDrillData = useMemo(() => {
+    if (!drillCard) return []
+    if (drillCard === 'rework') return reworkLots
+    if (drillCard === 'lots') return reworkLots
+    if (drillCard === 'pending_block') return reworkLots.filter(l => l.quality_status === 'pending_block')
+    if (drillCard === 'aging') return [...reworkLots].sort((a, b) => calcAgingDays(b.opened_at) - calcAgingDays(a.opened_at))
+    if (drillCard === 'decapagem') return decapagemLots
+    return []
+  }, [drillCard, reworkLots, decapagemLots])
+
+  const CARD_DRILL_TITLES: Record<NonNullable<DrillCard>, string> = {
+    rework: 'Peças em Retrabalho — Detalhe por Lote',
+    lots: 'Lotes Abertos — Detalhe',
+    pending_block: 'Lotes sem Bloqueio Formal de Qualidade',
+    aging: 'Lotes por Aging (mais antigos primeiro)',
+    decapagem: 'Lotes em Decapagem Externa',
+  }
 
   const agingBuckets = [
     { label: '0-2 dias', color: '#10b981', min: 0, max: 2, count: 0, qty: 0 },
@@ -205,9 +239,6 @@ export default function DashboardPage() {
     pnMap[pn].qty += l.quantity_open
   })
   const topPNs = Object.values(pnMap).sort((a, b) => b.qty - a.qty).slice(0, 10)
-
-  const decapagemLots = lots.filter(l => l.current_status === 'awaiting_decapagem')
-  const decapagemQty = decapagemLots.reduce((s, l) => s + l.quantity_open, 0)
 
   // ── Timeline data (drilldown) ─────────────
   const lotCodeMap = useMemo(
@@ -328,13 +359,14 @@ export default function DashboardPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatCard title="Peças em Retrabalho" value={formatQuantity(totalOpenQty)} icon={Package} />
-        <StatCard title="Lotes Abertos" value={openLots} icon={TrendingUp} />
+        <StatCard title="Peças em Retrabalho" value={formatQuantity(totalOpenQty)} icon={Package} onClick={() => setDrillCard('rework')} />
+        <StatCard title="Lotes Abertos" value={openLots} icon={TrendingUp} onClick={() => setDrillCard('lots')} />
         <StatCard
           title="Sem Bloqueio Qualidade"
           value={pendingBlock}
           icon={AlertCircle}
           variant={pendingBlock > 0 ? 'danger' : 'success'}
+          onClick={pendingBlock > 0 ? () => setDrillCard('pending_block') : undefined}
         />
         <StatCard
           title="Aging Médio"
@@ -342,6 +374,7 @@ export default function DashboardPage() {
           icon={Clock}
           variant={avgAging > 10 ? 'danger' : avgAging > 5 ? 'warning' : 'default'}
           subtitle={`Mais antigo: ${oldestAging}d`}
+          onClick={() => setDrillCard('aging')}
         />
         <StatCard title="Taxa de Sucata" value={formatPercent(scrapRate)} icon={Trash2} variant="warning" />
       </div>
@@ -355,8 +388,95 @@ export default function DashboardPage() {
           icon={FlaskConical}
           variant="warning"
           subtitle={decapagemLots.length > 0 ? `${formatQuantity(decapagemQty)} pç aguardando retorno` : 'Nenhum lote em decapagem'}
+          onClick={decapagemLots.length > 0 ? () => setDrillCard('decapagem') : undefined}
         />
       </div>
+
+      {/* ── Drilldown Dialog dos cards KPI ──────────────── */}
+      <Dialog open={drillCard !== null} onOpenChange={open => { if (!open) setDrillCard(null) }}>
+        <DialogContent className="max-w-5xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader className="shrink-0">
+            <DialogTitle className="text-sm font-semibold">
+              {drillCard ? CARD_DRILL_TITLES[drillCard] : ''}
+            </DialogTitle>
+            <p className="text-xs text-muted-foreground">
+              {cardDrillData.length} lote{cardDrillData.length !== 1 ? 's' : ''} —{' '}
+              {formatQuantity(cardDrillData.reduce((s, l) => s + l.quantity_open, 0))} pç abertas
+            </p>
+          </DialogHeader>
+          <div className="overflow-auto flex-1">
+            {cardDrillData.length === 0 ? (
+              <p className="text-center text-muted-foreground text-sm py-8">Nenhum lote nesta categoria.</p>
+            ) : (
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-background/95 backdrop-blur-sm z-10">
+                  <tr className="border-b border-border text-muted-foreground">
+                    <th className="text-left px-3 py-2.5">Lote</th>
+                    <th className="text-left px-3 py-2.5">Part Number</th>
+                    <th className="text-left px-3 py-2.5 hidden md:table-cell">Descrição</th>
+                    <th className="text-left px-3 py-2.5 hidden md:table-cell">Setor</th>
+                    <th className="text-left px-3 py-2.5 hidden md:table-cell">Defeito</th>
+                    <th className="text-center px-3 py-2.5">Status</th>
+                    <th className="text-center px-3 py-2.5">Qualidade</th>
+                    <th className="text-right px-3 py-2.5">Inicial</th>
+                    <th className="text-right px-3 py-2.5">Aberto</th>
+                    <th className="text-right px-3 py-2.5">Aging</th>
+                    <th className="px-3 py-2.5" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {cardDrillData.map(lot => {
+                    const aging = calcAgingDays(lot.opened_at)
+                    const defect = lot.defect_type as { name: string } | null
+                    return (
+                      <tr key={lot.id} className="border-b border-border/40 hover:bg-accent/20">
+                        <td className="px-3 py-2 font-mono text-primary whitespace-nowrap">
+                          <div className="flex items-center gap-1">
+                            {lot.quality_status === 'pending_block' && (
+                              <AlertTriangle className="h-3 w-3 text-red-400 shrink-0" />
+                            )}
+                            {lot.lot_code}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 font-mono">{lot.product_master?.part_number ?? '—'}</td>
+                        <td className="px-3 py-2 text-muted-foreground hidden md:table-cell max-w-[160px] truncate">
+                          {lot.product_master?.description ?? '—'}
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground hidden md:table-cell">{lot.origin_area}</td>
+                        <td className="px-3 py-2 text-muted-foreground hidden md:table-cell max-w-[120px] truncate">
+                          {defect?.name ?? '—'}
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <Badge variant="muted" className="text-xs">{LOT_STATUS_LABELS[lot.current_status] ?? lot.current_status}</Badge>
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <Badge variant={lot.quality_status === 'pending_block' ? 'danger' : 'muted'} className="text-xs">
+                            {QUALITY_STATUS_LABELS[lot.quality_status] ?? lot.quality_status}
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-2 text-right">{formatQuantity(lot.quantity_initial)}</td>
+                        <td className="px-3 py-2 text-right font-medium text-primary">{formatQuantity(lot.quantity_open)}</td>
+                        <td className="px-3 py-2 text-right">
+                          <Badge variant={aging > 10 ? 'danger' : aging > 5 ? 'warning' : aging > 2 ? 'outline' : 'success'} className="text-xs">
+                            {aging}d
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-2">
+                          <Link to={`/lotes/${lot.id}`} onClick={() => setDrillCard(null)}>
+                            <Button variant="ghost" size="icon" className="h-6 w-6">
+                              <ExternalLink className="h-3 w-3" />
+                            </Button>
+                          </Link>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Gráficos */}
       <div className="grid lg:grid-cols-2 gap-6">

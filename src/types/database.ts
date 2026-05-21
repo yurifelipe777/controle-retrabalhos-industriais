@@ -522,6 +522,7 @@ export interface Database {
           p_initial_stage_id: string
           p_defect_description?: string
           p_return_notes?: string
+          p_quantity?: number
         }
         Returns: Array<{ lot_id: string; lot_code: string }>
       }

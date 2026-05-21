@@ -33,6 +33,8 @@ export default function DecapagemPage() {
   const [initialStageId, setInitialStageId] = useState('')
   const [defectDescription, setDefectDescription] = useState('')
   const [returnNotes, setReturnNotes] = useState('')
+  const [returnType, setReturnType] = useState<'total' | 'parcial'>('total')
+  const [returnQty, setReturnQty] = useState('')
 
   const { data: dispatched = [], isLoading: loadingDispatched } = useQuery({
     queryKey: ['decapagem-dispatched'],
@@ -111,6 +113,8 @@ export default function DecapagemPage() {
     setInitialStageId('')
     setDefectDescription('')
     setReturnNotes('')
+    setReturnType('total')
+    setReturnQty('')
   }
 
   const closeReturnDialog = () => {
@@ -127,6 +131,17 @@ export default function DecapagemPage() {
       toast({ variant: 'destructive', title: 'Selecione a etapa de entrada do material' })
       return
     }
+    if (returnType === 'parcial') {
+      const qty = Number(returnQty)
+      if (!returnQty || isNaN(qty) || qty <= 0) {
+        toast({ variant: 'destructive', title: 'Informe a quantidade que está retornando' })
+        return
+      }
+      if (qty >= (returnDialog.event.quantity ?? 0)) {
+        toast({ variant: 'destructive', title: 'Para retorno total use a opção "Total"', description: 'A quantidade informada é igual ou maior que o total do evento.' })
+        return
+      }
+    }
 
     setLoading(true)
     try {
@@ -136,6 +151,7 @@ export default function DecapagemPage() {
         p_initial_stage_id: initialStageId,
         p_defect_description: defectDescription || undefined,
         p_return_notes: returnNotes || undefined,
+        p_quantity: returnType === 'parcial' ? Number(returnQty) : undefined,
       })
 
       if (error) {
@@ -375,6 +391,52 @@ export default function DecapagemPage() {
                     <span className="text-muted-foreground italic">PN bruto a selecionar</span>
                   </div>
                   <p className="text-xs text-muted-foreground">{returnDialog.event.quantity} pç</p>
+                </div>
+
+                {/* Quantidade retornando */}
+                <div className="space-y-2">
+                  <Label>Quantidade Retornando *</Label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setReturnType('total')}
+                      className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-all ${
+                        returnType === 'total'
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-white border-border text-foreground hover:bg-accent'
+                      }`}
+                    >
+                      Total ({returnDialog.event?.quantity} pç)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReturnType('parcial')}
+                      className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-all ${
+                        returnType === 'parcial'
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-white border-border text-foreground hover:bg-accent'
+                      }`}
+                    >
+                      Parcial
+                    </button>
+                  </div>
+                  {returnType === 'parcial' && (
+                    <div className="space-y-1">
+                      <Input
+                        type="number"
+                        min="1"
+                        max={(returnDialog.event?.quantity ?? 1) - 1}
+                        placeholder={`Máx: ${(returnDialog.event?.quantity ?? 1) - 1} pç`}
+                        value={returnQty}
+                        onChange={e => setReturnQty(e.target.value)}
+                      />
+                      {returnQty && Number(returnQty) > 0 && Number(returnQty) < (returnDialog.event?.quantity ?? 0) && (
+                        <p className="text-xs text-amber-600">
+                          Retornando {returnQty} pç — {(returnDialog.event?.quantity ?? 0) - Number(returnQty)} pç ficam aguardando retorno/sucata
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Busca do PN bruto retornado */}
