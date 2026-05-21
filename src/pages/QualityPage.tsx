@@ -69,10 +69,25 @@ export default function QualityPage() {
     },
   })
 
+  // Fallback: todas as etapas ativas, usadas quando lot_stage_balances está vazio
+  const { data: allStages = [] } = useQuery({
+    queryKey: ['process-stages-active'],
+    staleTime: 300_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('process_stages')
+        .select('id, name, sequence')
+        .eq('active', true)
+        .order('sequence')
+      return (data ?? []) as { id: string; name: string; sequence: number }[]
+    },
+  })
+
   // Filtra client-side para decapagem — exclui a própria etapa Decapagem Externa como origem
   const decapagemBalances = balances.filter(
     b => (b.stage as { name: string } | undefined)?.name !== 'Decapagem Externa'
   )
+  const fallbackStages = allStages.filter(s => s.name !== 'Decapagem Externa')
 
   const openDialog = (action: ActionType, lot: ReworkLot) => {
     setDialog({ open: true, action, lot })
@@ -292,15 +307,20 @@ export default function QualityPage() {
                       <SelectValue placeholder={balancesFetching ? 'Carregando etapas…' : 'Selecione a etapa...'} />
                     </SelectTrigger>
                     <SelectContent>
-                      {decapagemBalances.map(b => {
-                        const stage = b.stage as { id: string; name: string } | undefined
-                        return <SelectItem key={b.id} value={stage?.id ?? ''}>{stage?.name} — {formatQuantity(b.balance_quantity)} pç</SelectItem>
-                      })}
-                      {!balancesFetching && decapagemBalances.length === 0 && (
-                        <div className="px-3 py-2 text-xs text-muted-foreground">Nenhuma etapa com saldo disponível</div>
-                      )}
+                      {decapagemBalances.length > 0
+                        ? decapagemBalances.map(b => {
+                            const stage = b.stage as { id: string; name: string } | undefined
+                            return <SelectItem key={b.id} value={stage?.id ?? ''}>{stage?.name} — {formatQuantity(b.balance_quantity)} pç</SelectItem>
+                          })
+                        : fallbackStages.map(s => (
+                            <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                          ))
+                      }
                     </SelectContent>
                   </Select>
+                  {!balancesFetching && decapagemBalances.length === 0 && fallbackStages.length > 0 && (
+                    <p className="text-xs text-amber-400/70">Saldo por etapa indisponível — indique em qual etapa o lote se encontra.</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Quantidade *</Label>
@@ -322,15 +342,20 @@ export default function QualityPage() {
                       <SelectValue placeholder={balancesFetching ? 'Carregando etapas…' : 'Selecione...'} />
                     </SelectTrigger>
                     <SelectContent>
-                      {balances.map(b => {
-                        const stage = b.stage as { id: string; name: string } | undefined
-                        return <SelectItem key={b.id} value={stage?.id ?? ''}>{stage?.name} — {formatQuantity(b.balance_quantity)} pç</SelectItem>
-                      })}
-                      {!balancesFetching && balances.length === 0 && (
-                        <div className="px-3 py-2 text-xs text-muted-foreground">Nenhuma etapa com saldo disponível</div>
-                      )}
+                      {balances.length > 0
+                        ? balances.map(b => {
+                            const stage = b.stage as { id: string; name: string } | undefined
+                            return <SelectItem key={b.id} value={stage?.id ?? ''}>{stage?.name} — {formatQuantity(b.balance_quantity)} pç</SelectItem>
+                          })
+                        : fallbackStages.map(s => (
+                            <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                          ))
+                      }
                     </SelectContent>
                   </Select>
+                  {!balancesFetching && balances.length === 0 && fallbackStages.length > 0 && (
+                    <p className="text-xs text-amber-400/70">Saldo por etapa indisponível — indique em qual etapa o lote se encontra.</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Quantidade *</Label>
